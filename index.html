@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Exzone NPI Tracker</title>
 <meta name="description" content="Exzone NPI team tracker">
-<meta name="theme-color" content="#0E6B66">
+<meta name="theme-color" content="#1352C4">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="NPI Tracker">
@@ -19,8 +19,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 :root{
-  --bg:#EDEFEC; --surface:#FFFFFF; --sunk:#E3E6E2; --ink:#1C2124; --ink-2:#4A5358; --ink-3:#6F797E;
-  --line:#D2D7D3; --accent:#0E6B66; --accent-soft:#D5EAE7; --on-accent:#FFFFFF;
+  --bg:#F1F3F6; --surface:#FFFFFF; --sunk:#E5E9EF; --ink:#1F2328; --ink-2:#4A5159; --ink-3:#6B7380;
+  --line:#D5DAE1; --accent:#1352C4; --accent-soft:#DDE7FA; --on-accent:#FFFFFF; --steel:#3A3F45;
   --ok:#2E7D4F; --ok-bg:#DCEFE2; --warn:#9A5F08; --warn-bg:#F7E8CF; --bad:#B23A2E; --bad-bg:#F6DCD8;
   --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -30,8 +30,8 @@
 @media (prefers-color-scheme: dark){
   :root{
     color-scheme:dark;
-    --bg:#121617; --surface:#1B2123; --sunk:#232A2C; --ink:#E6EBEA; --ink-2:#AEB8B7; --ink-3:#86918F;
-    --line:#2F3739; --accent:#4FB7AE; --accent-soft:#1D3A38; --on-accent:#0C1414;
+    --bg:#111418; --surface:#1A1F26; --sunk:#232A33; --ink:#E7EAEE; --ink-2:#AEB6C0; --ink-3:#86909B;
+    --line:#2C333D; --accent:#6E9BF2; --accent-soft:#1B2A45; --on-accent:#0B1220; --steel:#AEB6C0;
     --ok:#6BC58E; --ok-bg:#1C3326; --warn:#E3A948; --warn-bg:#3A2C14; --bad:#EE7F72; --bad-bg:#3D1F1B;
   }
 }
@@ -53,7 +53,19 @@ input,select,textarea{font-size:16px} /* stops iPhone zoom */
 .lock p{margin:0;color:var(--ink-2);font-size:13px}
 .err{color:var(--bad);font-size:13px}
 
-header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:12px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:14px;position:relative}
+header.top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--accent) 0%,var(--accent) 45%,var(--steel) 100%)}
+.brand{display:flex;align-items:center;gap:14px}
+.logo-chip{background:#fff;border-radius:10px;padding:6px 8px;display:grid;place-items:center;flex:none;box-shadow:0 0 0 1px var(--line)}
+.logo-chip img{height:46px;width:auto;display:block}
+.tagline{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.tagline b{color:var(--accent);font-weight:500}
+.lock .logo-full{background:#fff;border-radius:8px;padding:10px;display:grid;place-items:center}
+.lock .logo-full img{width:100%;max-width:300px;height:auto;display:block}
+.exzone{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:16px 0 4px;border-top:1px solid var(--line);margin-top:6px}
+.exzone img{height:40px;width:auto;background:#fff;border-radius:6px;padding:4px 8px}
+.exzone span{font-family:var(--display);font-weight:600;letter-spacing:.06em;color:var(--ink-2);font-size:13px;text-transform:uppercase;text-align:center}
+@media (max-width:520px){.logo-chip img{height:36px}header.top h1{font-size:24px}}
 header.top h1{font-size:30px;font-weight:700;line-height:1.05}
 header.top h1 span{color:var(--accent)}
 .stamp{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
@@ -146,14 +158,15 @@ label.inline{display:inline-flex;gap:6px;align-items:center;font-size:13px;color
 .empty{padding:14px;color:var(--ink-3);font-size:13px}
 .more{padding:8px 14px;border-top:1px solid var(--line)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:6px;font-size:13px;z-index:10;max-width:calc(100vw - 32px)}
-footer{font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:12px;max-width:80ch;display:flex;flex-direction:column;gap:6px}
+footer{font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+footer > span{max-width:80ch}
 </style>
 </head>
 <body>
 
 <div class="lock" id="lock">
   <form id="lockForm" autocomplete="off">
-    <div class="eyebrow">Exzone Precision Engineering · NPI</div>
+    <div class="logo-full"><img src="icons/npi-logo-full.png" alt="New Gen NPI: Innovate, Collaborate, Deliver" width="720" height="530"></div>
     <h1>NPI Team <span>Tracker</span></h1>
     <p>Enter the team passcode from Rashid to open the tracker.</p>
     <input class="field" id="code" type="password" placeholder="Team passcode" autocomplete="current-password" aria-label="Team passcode" required>
@@ -164,9 +177,12 @@ footer{font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);paddin
 
 <div class="wrap" id="app" hidden>
   <header class="top">
-    <div>
-      <div class="eyebrow">Exzone Precision Engineering · NPI</div>
-      <h1>NPI Team <span>Tracker</span></h1>
+    <div class="brand">
+      <div class="logo-chip"><img src="icons/npi-logo-mark.png" alt="New Gen NPI" width="480" height="219"></div>
+      <div>
+        <div class="tagline">Innovate · <b>Collaborate</b> · Deliver</div>
+        <h1>NPI Team <span>Tracker</span></h1>
+      </div>
     </div>
     <div class="stamp">
       <div><span class="eyebrow">Tracker updated</span><b id="syncStamp">—</b></div>
@@ -198,7 +214,7 @@ footer{font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);paddin
             <input class="field" type="text" id="actText" placeholder="Add a task…" maxlength="200" aria-label="New task">
             <div class="line">
               <select class="field" id="actOwner" aria-label="Owner" style="flex:1 1 140px"></select>
-              <input class="field" type="text" id="actTag" placeholder="Tag" maxlength="30" style="flex:1 1 90px;width:auto" aria-label="Tag">
+              <input class="field" type="text" id="actTag" placeholder="Customer / project (optional)" maxlength="30" style="flex:1 1 200px;width:auto" aria-label="Customer or project tag">
               <label class="inline"><input type="checkbox" id="actUrgent"> Urgent</label>
               <button class="btn primary" type="submit">Add</button>
             </div>
@@ -226,6 +242,7 @@ footer{font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);paddin
   <footer>
     <span>Project status is updated each weekday morning by Rashid's Claude from Outlook. Updates you post on a project are shown under it straight away and folded into its status the next morning.</span>
     <span>Please don't post HR or personal matters. <button class="linkbtn" type="button" id="logout">Lock this device</button></span>
+    <div class="exzone"><img src="icons/exzone-logo.png" alt="Exzone" onerror="this.remove()"><span>Exzone Precision Engineering Sdn. Bhd.</span></div>
   </footer>
 </div>
 
