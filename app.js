@@ -88,7 +88,7 @@ function render(){
   else if(!teamOk){ b.hidden=false; b.className="banner warn"; b.textContent="Couldn't reach the team list. Showing the last saved copy; tasks and ticks may be out of date."; }
   else b.hidden=true;
   document.querySelectorAll("#actForm button,#postForm button").forEach(x=>x.disabled=!SCRIPT_URL);
-  renderFilters(); renderSummary(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed();
+  renderFilters(); renderSummary(); renderView(); renderDash(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed();
 }
 function renderFilters(){
   $("filters").innerHTML = ["all",...teamKeys()].map(k=>`<button class="chip" type="button" aria-pressed="${filter===k}" data-k="${k}">${k==="all"?"Whole team":av(k)+esc(T(k).short)}</button>`).join("");
@@ -165,11 +165,77 @@ function renderFeed(){
     + (all.length>feedLimit?`<div class="more"><button class="linkbtn" type="button" id="moreFeed">Show more</button></div>`:"");
 }
 
+
+/* ---------- summary dashboard ---------- */
+let view = store.get("npi-view") || "summary";
+function renderView(){
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", String(t.dataset.view===view)));
+  $("viewSummary").hidden = view!=="summary"; $("viewTracker").hidden = view!=="tracker";
+}
+const HL = {ok:"On track", warn:"Watch", bad:"At risk"};
+function renderDash(){
+  const projs = D.projects.filter(x=>match(x.owner));
+  // pipeline
+  $("pipeLegend").innerHTML = ["bad","warn","ok"].map(h=>`<span><i class="c-${h}"></i>${HL[h]}</span>`).join("");
+  const cols = STAGES.map((s,i)=>{ const p=projs.filter(x=>x.stage===i); return {s, p, bad:p.filter(x=>x.health==="bad"), warn:p.filter(x=>x.health==="warn"), ok:p.filter(x=>x.health==="ok")}; });
+  const max = Math.max(1, ...cols.map(c=>c.p.length)), H = 140;
+  $("pipeline").innerHTML = cols.map(c=>{
+    const seg = h => c[h].length ? `<b class="c-${h}" style="height:${Math.round(c[h].length/max*H)}px"></b>` : "";
+    const tip = `<b>${c.s}: ${c.p.length} project${c.p.length===1?"":"s"}</b>` + (c.p.length ? "<br>"+["bad","warn","ok"].filter(h=>c[h].length).map(h=>`${HL[h]}: ${c[h].length}`).join(" · ") + "<br>" + c.p.slice(0,6).map(x=>esc(x.name)).join("<br>") + (c.p.length>6?`<br>+${c.p.length-6} more`:"") : "");
+    return `<div class="pcol" tabindex="0" data-tip="${esc(tip)}" aria-label="${c.s}: ${c.p.length} projects"><span class="n">${c.p.length||""}</span><div class="pstack">${seg("ok")}${seg("warn")}${seg("bad")}</div></div>`;
+  }).join("") ;
+  if(!$("plabels")){ const l=document.createElement("div"); l.className="plabels"; l.id="plabels"; $("pipeline").after(l); }
+  $("plabels").innerHTML = STAGES.map(s=>`<span>${s}</span>`).join("");
+
+  // needs attention
+  const t = todayISO();
+  const att = [];
+  projs.forEach(p=>{
+    const late = !p.asap && p.due && p.due < t;
+    if(p.health==="bad" || late || p.asap) att.push({lvl: p.health==="bad"?0:1, color: p.health==="bad"?"bad":"warn", t:p.name, s:`${p.customer?p.customer+" · ":""}${T(p.owner).short} · ${p.healthLabel||HL[p.health]}`, d: p.asap?"ASAP": late?"Overdue":fmtDate(p.due), late: p.asap||late});
+  });
+  allActions().filter(a=>match(a.owner) && a.urgent && !a.done).forEach(a=>att.push({lvl:2, color:"warn", t:a.text, s:`Urgent action · ${T(a.owner).short}${a.tag?" · "+a.tag:""}`, d:"", late:false}));
+  att.sort((a,b)=>a.lvl-b.lvl);
+  $("attention").innerHTML = att.length ? `<div class="alist">${att.slice(0,8).map(a=>`<div class="aitem"><span class="dot c-${a.color}" aria-hidden="true"></span><div><div class="t">${esc(a.t)}</div><div class="s">${esc(a.s)}</div></div><span class="d ${a.late?"late":""}">${esc(a.d)}</span></div>`).join("")}</div>${att.length>8?`<div class="s eyebrow" style="margin-top:6px">+${att.length-8} more in Projects &amp; actions</div>`:""}` : `<div class="empty" style="padding:0">Nothing needs attention right now.</div>`;
+
+  // next 14 days
+  const end = new Date(dt(t).getTime()+14*864e5), endS = `${end.getFullYear()}-${pad(end.getMonth()+1)}-${pad(end.getDate())}`;
+  const items = projs.filter(p=>p.due && p.due>=t && p.due<=endS).map(p=>({d:p.due, t:p.next||p.name, s:`${p.name} · ${T(p.owner).short}`, kind:"Due"}))
+    .concat(D.meetings.filter(m=>m.date>=t && m.date<=endS && !m.time && (filter==="all"||(m.who||[]).includes(filter))).map(m=>({d:m.date, t:m.title, s:m.sub||"", kind:"Milestone"})))
+    .sort((a,b)=>a.d.localeCompare(b.d));
+  $("deadlines").innerHTML = items.length ? `<div class="alist">${items.slice(0,8).map(i=>`<div class="aitem"><span class="dot" style="background:var(--accent)" aria-hidden="true"></span><div><div class="t">${esc(i.t)}</div><div class="s">${i.kind} · ${esc(i.s)}</div></div><span class="d">${fmtDate(i.d)}</span></div>`).join("")}</div>` : `<div class="empty" style="padding:0">No due dates in the next 14 days.</div>`;
+
+  // workload
+  const acts = allActions();
+  const rows = teamKeys().map(k=>({k, open:acts.filter(a=>a.owner===k&&!a.done).length, urgent:acts.filter(a=>a.owner===k&&!a.done&&a.urgent).length, p:D.projects.filter(x=>x.owner===k).length, r:D.projects.filter(x=>x.owner===k&&x.health==="bad").length}))
+    .sort((a,b)=>b.open-a.open || b.p-a.p);
+  const wmax = Math.max(1,...rows.map(r=>r.open));
+  $("workload").innerHTML = rows.map(r=>`<button type="button" class="hbar" data-k="${r.k}" aria-pressed="${filter===r.k}" data-tip="${esc(`<b>${esc(T(r.k).name)}</b><br>${r.open} open action${r.open===1?"":"s"}${r.urgent?` (${r.urgent} urgent)`:""}<br>${r.p} project${r.p===1?"":"s"}${r.r?`, ${r.r} at risk`:""}`)}" style="${filter!=="all"&&filter!==r.k?"opacity:.45":""}">
+      <span class="lbl">${esc(T(r.k).short)}</span><span class="track"><span class="fill" style="width:${r.open/wmax*100}%"></span></span><span class="val">${r.open}${r.r?`<em>${r.r} risk</em>`:""}</span></button>`).join("");
+
+  // customers
+  const byC = {}; projs.forEach(p=>{ const c=p.customer||"Internal / other"; (byC[c]=byC[c]||[]).push(p); });
+  const crow = Object.entries(byC).sort((a,b)=>b[1].length-a[1].length);
+  const cmax = Math.max(1,...crow.map(c=>c[1].length));
+  $("customers").innerHTML = crow.length ? crow.map(([c,ps])=>{ const r=ps.filter(p=>p.health==="bad").length;
+    return `<div class="hbar" tabindex="0" data-tip="${esc(`<b>${esc(c)}: ${ps.length}</b><br>`+ps.slice(0,6).map(p=>esc(p.name)).join("<br>")+(ps.length>6?`<br>+${ps.length-6} more`:""))}"><span class="lbl">${esc(c)}</span><span class="track"><span class="fill" style="width:${ps.length/cmax*100}%"></span></span><span class="val">${ps.length}${r?`<em>${r} risk</em>`:""}</span></div>`}).join("") : `<div class="empty" style="padding:0">No projects.</div>`;
+}
+document.addEventListener("click", e=>{ const tb=e.target.closest(".tab"); if(tb){ view=tb.dataset.view; store.set("npi-view",view); renderView(); } });
+/* tooltip */
+(function(){
+  const tip=$("tip");
+  function show(el, x, y){ tip.innerHTML=el.dataset.tip; tip.hidden=false; const r=tip.getBoundingClientRect(); let L=x+12, T2=y+12; if(L+r.width>innerWidth-8) L=x-r.width-12; if(T2+r.height>innerHeight-8) T2=y-r.height-12; tip.style.left=Math.max(8,L)+"px"; tip.style.top=Math.max(8,T2)+"px"; }
+  document.addEventListener("pointermove", e=>{ const el=e.target.closest("[data-tip]"); if(el) show(el,e.clientX,e.clientY); else tip.hidden=true; });
+  document.addEventListener("focusin", e=>{ const el=e.target.closest("[data-tip]"); if(el){ const r=el.getBoundingClientRect(); show(el, r.left+r.width/2, r.bottom); } });
+  document.addEventListener("focusout", ()=>tip.hidden=true);
+  document.addEventListener("scroll", ()=>tip.hidden=true, {passive:true});
+})();
+
 /* ---------- interactions ---------- */
 let toastT;
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2800) }
 document.addEventListener("click", e=>{
-  const f = e.target.closest(".chip,.person");
+  const f = e.target.closest(".chip,.person,button.hbar");
   if(f){ const k=f.dataset.k; filter=(filter===k&&k!=="all")?"all":k; render(); return; }
   const p = e.target.closest("[data-post]");
   if(p){ $("postProj").value=p.dataset.post; $("updates").scrollIntoView({behavior:"smooth"}); setTimeout(()=>$("postText").focus(),350); return; }

@@ -160,6 +160,48 @@ label.inline{display:inline-flex;gap:6px;align-items:center;font-size:13px;color
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:6px;font-size:13px;z-index:10;max-width:calc(100vw - 32px)}
 footer{font-size:12px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
 footer > span{max-width:80ch}
+
+/* tabs + summary dashboard */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{border:0;background:none;padding:10px 14px;font-size:15px;font-weight:600;color:var(--ink-3);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;font-family:var(--display)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.dash{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.dash{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card.wide{grid-column:1/-1}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.card-head h2{font-size:17px;font-weight:600}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.pipe{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;align-items:end;height:190px;border-bottom:1px solid var(--line);padding-top:8px}
+.pcol{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;cursor:default;outline:none}
+.pcol .n{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--ink)}
+.pstack{width:min(24px,70%);display:flex;flex-direction:column-reverse;gap:2px}
+.pstack b{display:block;width:100%}
+.pstack b:last-child{border-radius:4px 4px 0 0}
+.pcol:hover .pstack,.pcol:focus-visible .pstack{filter:brightness(1.1)}
+.plabels{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);text-align:center;margin-top:-4px}
+.c-ok{background:var(--ok)} .c-warn{background:var(--warn)} .c-bad{background:var(--bad)}
+.hbars{display:flex;flex-direction:column;gap:8px}
+.hbar{display:grid;grid-template-columns:minmax(76px,120px) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px;cursor:default;outline:none;border-radius:4px}
+.hbar .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+.hbar .track{height:14px;display:flex;align-items:center}
+.hbar .fill{height:14px;background:var(--accent);border-radius:0 4px 4px 0;min-width:2px}
+.hbar .val{font-family:var(--mono);font-size:12px;color:var(--ink);min-width:3ch;text-align:right}
+.hbar .val em{font-style:normal;color:var(--bad);margin-left:6px}
+.hbar:hover .fill,.hbar:focus-visible .fill{filter:brightness(1.15)}
+button.hbar{border:0;background:none;padding:0;text-align:left;width:100%;cursor:pointer}
+.alist{display:flex;flex-direction:column}
+.aitem{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.aitem:first-child{border-top:0;padding-top:0}
+.aitem .t{font-weight:500;line-height:1.3}
+.aitem .s{font-size:12px;color:var(--ink-3)}
+.aitem .d{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
+.aitem .d.late{color:var(--bad)}
+.dot{width:9px;height:9px;border-radius:50%;margin-top:5px}
+.tip{position:fixed;z-index:20;background:var(--ink);color:var(--bg);font-size:12px;line-height:1.4;padding:7px 10px;border-radius:6px;pointer-events:none;max-width:240px;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+.tip b{font-weight:600}
 </style>
 </head>
 <body>
@@ -195,6 +237,36 @@ footer > span{max-width:80ch}
   <div class="summary" id="summary"></div>
   <div class="filters" role="group" aria-label="Filter by team member" id="filters"></div>
 
+  <div class="tabs" role="tablist" aria-label="View">
+    <button class="tab" type="button" role="tab" id="tab-summary" data-view="summary" aria-selected="true">Summary</button>
+    <button class="tab" type="button" role="tab" id="tab-tracker" data-view="tracker" aria-selected="false">Projects &amp; actions</button>
+  </div>
+
+  <div id="viewSummary" class="dash">
+    <section class="card wide">
+      <div class="card-head"><h2>Project pipeline</h2><span class="eyebrow">Projects at each NPI stage</span></div>
+      <div class="legend" id="pipeLegend"></div>
+      <div class="pipe" id="pipeline"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Needs attention</h2><span class="eyebrow">At risk, blocked or overdue</span></div>
+      <div id="attention"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Next 14 days</h2><span class="eyebrow">Due dates &amp; milestones</span></div>
+      <div id="deadlines"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Team workload</h2><span class="eyebrow">Open actions per person</span></div>
+      <div class="hbars" id="workload"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Projects by customer</h2><span class="eyebrow">Active projects</span></div>
+      <div class="hbars" id="customers"></div>
+    </section>
+  </div>
+
+  <div id="viewTracker" hidden>
   <section>
     <div class="sec-head"><h2>Team</h2><span class="eyebrow">Tap a person to filter</span></div>
     <div class="people" id="people"></div>
@@ -238,6 +310,7 @@ footer > span{max-width:80ch}
       <div class="feed" id="feed"></div>
     </div>
   </section>
+  </div>
 
   <footer>
     <span>Project status is updated each weekday morning by Rashid's Claude from Outlook. Updates you post on a project are shown under it straight away and folded into its status the next morning.</span>
@@ -247,6 +320,7 @@ footer > span{max-width:80ch}
 </div>
 
 <div class="toast" id="toast" hidden role="status"></div>
+<div class="tip" id="tip" hidden role="tooltip"></div>
 
 <script src="config.js"></script>
 <script src="app.js"></script>
