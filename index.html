@@ -280,6 +280,13 @@ dialog.pop::backdrop{background:rgba(0,25,50,.45)}
 .pop-body .stage-labels{margin-top:4px}
 
 footer.site{border-top:1px solid var(--line);margin-top:8px;padding-top:14px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--ink-3)}
+.updbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:65;background:var(--navy);color:#fff;border-radius:8px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px rgba(0,20,50,.35);width:max-content;max-width:calc(100vw - 24px);font-size:13px;border-left:4px solid var(--blue)}
+.updbar .btn{background:#fff;color:var(--navy);border-color:#fff;flex:none}
+.updbar .x{border:0;background:rgba(255,255,255,.15);color:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:17px;flex:none}
+.news-ver{display:flex;flex-direction:column;gap:6px}
+.news-ver h3{display:flex;gap:8px;align-items:baseline;text-transform:none;color:var(--navy);font-size:15px}
+.news-ver ul{margin:0;padding-left:18px;color:var(--ink-2);display:flex;flex-direction:column;gap:3px}
+.news-ver + .news-ver{border-top:1px solid var(--line-2);padding-top:12px}
 footer.site .exzone{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding-top:10px}
 footer.site .exzone img{height:34px;width:auto}
 footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spacing:.06em;color:var(--navy);font-size:13px;text-transform:uppercase;text-align:center}
@@ -321,6 +328,9 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
             <div class="sep"></div>
             <button class="mi" type="button" id="refresh">Refresh now</button>
             <button class="mi" type="button" id="deskBtn" role="switch" aria-checked="false">Desktop mode (full width)<span class="switch"></span></button>
+            <button class="mi" type="button" id="installBtn" hidden>Install on this computer<span class="eyebrow">App</span></button>
+            <button class="mi" type="button" id="checkBtn">Check for updates<span class="eyebrow" id="verTag"></span></button>
+            <button class="mi" type="button" id="newsBtn">What's new</button>
             <div class="sep"></div>
             <button class="mi" type="button" id="logout">Lock this device</button>
           </div>
@@ -419,7 +429,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     </section>
 
     <footer class="site">
-      <span>Project status is updated each weekday by Rashid's Claude from Outlook. Updates you post on a project show under it straight away and are folded into its status at the next refresh. Please don't post HR or personal matters.</span>
+      <span><b id="verFoot"></b> · Project status is updated each weekday by Rashid's Claude from Outlook. Updates you post on a project show under it straight away and are folded into its status at the next refresh. Please don't post HR or personal matters.</span>
       <div class="exzone"><img src="icons/exzone-logo.png" alt="Exzone" onerror="this.remove()"><span>EXZONE Precision Engineering Sdn. Bhd. · NPI team</span></div>
     </footer>
   </main>
@@ -428,6 +438,13 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
 <dialog class="pop" id="pop" aria-labelledby="popTitle">
   <div class="pop-head"><div><h2 id="popTitle"></h2><div class="sub" id="popSub"></div></div><button class="x" type="button" id="popX" aria-label="Close">×</button></div>
   <div class="pop-body" id="popBody"></div>
+</dialog>
+
+<div class="updbar" id="updBar" hidden role="alert"><span><b>New version available.</b> Update to get the latest features.</span><button class="btn" type="button" id="updNow">Update now</button><button class="x" type="button" id="updLater" aria-label="Later">×</button></div>
+
+<dialog class="pop" id="news" aria-labelledby="newsTitle" style="width:min(560px,calc(100vw - 24px))">
+  <div class="pop-head"><div><h2 id="newsTitle">What's new</h2><div class="sub" id="newsSub"></div></div><button class="x" type="button" id="newsX" aria-label="Close">×</button></div>
+  <div class="pop-body" id="newsBody"></div>
 </dialog>
 
 <div class="toast" id="toast" hidden role="status"></div>

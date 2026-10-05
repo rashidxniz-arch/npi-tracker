@@ -363,7 +363,7 @@ document.addEventListener("click", e=>{
   if(e.target.id==="moreFeed"){ feedLimit+=25; renderFeed(); }
 });
 document.addEventListener("keydown", e=>{
-  if(e.key==="Escape") menu(false);
+  if(e.key==="Escape"){ menu(false); }
   const tr = e.target.closest && e.target.closest("tr[data-pid]");
   if(tr && (e.key==="Enter"||e.key===" ")){ e.preventDefault(); openProject(tr.dataset.pid); }
 });
@@ -372,7 +372,7 @@ $("q").addEventListener("input", e=>{ q=e.target.value.trim(); renderProjects();
 $("hFilter").onchange = e=>{ hF=e.target.value; renderProjects(); };
 $("sFilter").onchange = e=>{ sF=e.target.value; renderProjects(); };
 $("whoami").onchange = e=>{ me=e.target.value; store.set("npi-me", me); render(); };
-$("deskBtn").onclick = ()=>{ desk=!desk; store.set("npi-desk", desk?"1":""); renderView(); };
+$("deskBtn").onclick = ()=>{ desk=!desk; store.set("npi-desk-set","1"); store.set("npi-desk", desk?"1":""); renderView(); };
 $("actions").addEventListener("change", async e=>{
   const c = e.target.closest(".check"); if(!c) return;
   const ok = await send({op:"setDone", id:c.dataset.id, done:c.checked});
@@ -412,4 +412,70 @@ $("lockForm").onsubmit = async e=>{
 };
 if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
-if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+/* ---------- version, updates, install ---------- */
+const APP_VERSION = "2.0";
+const CHANGES = [
+  {v:"2.0", date:"5 Oct 2026", items:[
+    "New look matching BOM Studio: top menu, live clock and a name menu",
+    "Summary tiles, pipeline and customer bars open the matching project list when clicked",
+    "Projects register with search, status and stage filters, and Cards / Table view (sortable)",
+    "Click any project for a pop-up with status, related actions, meetings and an update box",
+    "Actions grouped by person with Open / Done / All; Calendar grouped by day with due dates",
+    "Desktop mode (full width) and Install on this computer",
+    "Update notice when a new version is published, plus this What's new page"]},
+  {v:"1.1", date:"30 Sep 2026", items:["Summary dashboard: pipeline, needs attention, next 14 days, workload, customers","New Gen NPI branding"]},
+  {v:"1.0", date:"26 Sep 2026", items:["First release: projects, actions, meetings and team updates"]}
+];
+$("verTag").textContent = "v"+APP_VERSION; $("verFoot").textContent = "NPI Tracker v"+APP_VERSION;
+function showNews(){
+  $("newsSub").textContent = "You're on version "+APP_VERSION;
+  $("newsBody").innerHTML = CHANGES.map(c=>`<div class="news-ver"><h3>v${c.v} <span class="eyebrow" style="text-transform:none">${c.date}</span></h3><ul>${c.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`).join("");
+  menu(false); if(!$("news").open) $("news").showModal();
+  store.set("npi-ver", APP_VERSION);
+}
+$("newsBtn").onclick = showNews;
+$("newsX").onclick = ()=>$("news").close();
+$("news").addEventListener("click", e=>{ if(e.target===$("news")) $("news").close(); });
+// Show "What's new" once after an update (existing users only)
+(function(){ const seen = store.get("npi-ver"); if(seen===APP_VERSION) return;
+  if(seen || store.get("npi-code")){ const t=setInterval(()=>{ if(!$("app").hidden){ clearInterval(t); setTimeout(showNews, 700); } }, 400); }
+  else store.set("npi-ver", APP_VERSION); })();
+
+let swReg = null, reloading = false, updating = false;
+function offerUpdate(){ $("toast").hidden = true; $("updBar").hidden = false; }
+$("updLater").onclick = ()=>{ $("updBar").hidden = true; };
+$("updNow").onclick = ()=>{
+  const w = swReg && swReg.waiting;
+  updating = true;
+  if(w) w.postMessage({type:"SKIP_WAITING"}); else location.reload();
+  $("updNow").disabled = true; $("updNow").textContent = "Updating…";
+};
+$("checkBtn").onclick = async ()=>{
+  menu(false);
+  if(!swReg){ location.reload(); return; }
+  toast("Checking for updates…");
+  try{ await swReg.update(); }catch(e){}
+  setTimeout(()=>{ if(swReg.waiting || swReg.installing) offerUpdate(); else toast("You're on the latest version (v"+APP_VERSION+")"); }, 1500);
+};
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").then(reg=>{
+    swReg = reg;
+    if(reg.waiting && navigator.serviceWorker.controller) offerUpdate();
+    reg.addEventListener("updatefound", ()=>{
+      const nw = reg.installing; if(!nw) return;
+      nw.addEventListener("statechange", ()=>{ if(nw.state==="installed" && navigator.serviceWorker.controller) offerUpdate(); });
+    });
+    setInterval(()=>reg.update().catch(()=>{}), 30*60*1000);          // check every 30 min
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) reg.update().catch(()=>{}); });
+  }).catch(()=>{});
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{ if(!updating || reloading) return; reloading = true; location.reload(); });
+}
+// Install as a desktop / phone app (Chrome, Edge)
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e=>{ e.preventDefault(); installEvt = e; $("installBtn").hidden = false; });
+window.addEventListener("appinstalled", ()=>{ $("installBtn").hidden = true; toast("Installed. Open NPI Tracker from your desktop or Start menu."); });
+$("installBtn").onclick = async ()=>{ menu(false); if(!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(()=>{}); installEvt = null; $("installBtn").hidden = true; };
+// Default to full width on large screens the first time
+if(!store.get("npi-desk-set") && window.innerWidth >= 1600){ desk = true; store.set("npi-desk","1"); }
+store.set("npi-desk-set","1");
