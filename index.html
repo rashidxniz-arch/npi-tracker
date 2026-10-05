@@ -324,7 +324,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
           <button class="namebtn" type="button" id="meBtn" aria-haspopup="true" aria-expanded="false"></button>
           <div class="dropdown" id="meMenu" hidden>
             <div><label class="eyebrow" for="whoami">I am</label><select class="field" id="whoami"></select></div>
-            <div class="stamp">Tracker updated <b id="syncStamp">—</b></div>
+            <div class="stamp">Tracker updated <b id="syncStamp">—</b><div id="covStamp" style="margin-top:2px"></div></div>
             <div class="sep"></div>
             <button class="mi" type="button" id="refresh">Refresh now</button>
             <button class="mi" type="button" id="deskBtn" role="switch" aria-checked="false">Desktop mode (full width)<span class="switch"></span></button>
@@ -416,7 +416,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     <!-- UPDATES -->
     <section id="v-updates" data-v="updates" hidden>
       <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="pagehead"><div><h1>Updates &amp; activity</h1><p>Team posts and project emails</p></div></div>
+        <div class="pagehead"><div><h1>Updates &amp; activity</h1><p id="covLine">Team posts and project emails</p></div></div>
         <div class="filters" role="group" aria-label="Filter by team member" data-filters></div>
         <div class="panel">
           <form class="addrow" id="postForm" autocomplete="off">

@@ -93,6 +93,9 @@ function render(){
   const mb = $("meBtn"); mb.classList.toggle("need", !me);
   mb.innerHTML = me ? `${av(me)}<span class="nm">${esc(T(me).short)}</span>` : `<span class="nm">Choose name</span>`;
   $("syncStamp").textContent = D.lastSync ? `${fmtDate(D.lastSync)} ${D.lastSync.slice(11,16)}` : "—";
+  const cv = D.coverage;
+  $("covStamp").textContent = cv ? `Read ${cv.inbox} inbox + ${cv.sent} sent emails since ${fmtDate(cv.from)}` : "";
+  $("covLine").textContent = cv ? `Team posts and project emails · last refresh read every email since ${fmtDate(cv.from)} (${cv.inbox} inbox, ${cv.sent} sent; ${cv.skipped} skipped as ${cv.note})` : "Team posts and project emails";
   const ao = $("actOwner").value; $("actOwner").innerHTML = ownerOptions(ao || me || (filter!=="all"?filter:"rashid"), false);
   const pp = $("postProj").value;
   $("postProj").innerHTML = projOptions(pp);
@@ -279,10 +282,12 @@ function openProject(pid){
   popPid = pid;
   $("popTitle").textContent = x.name;
   $("popSub").textContent = [x.customer, "Owner: "+T(x.owner).name].filter(Boolean).join(" · ");
-  const words = [x.customer, x.name].filter(Boolean).flatMap(s=>s.toLowerCase().split(/[^a-z0-9]+/)).filter(w=>w.length>3);
-  const rel = allActions().filter(a=>a.project===pid || (a.tag && words.some(w=>a.tag.toLowerCase().includes(w)))).sort((a,b)=>(!!a.done)-(!!b.done));
+  const STOP = new Set(["project","tool","tools","tooling","sample","samples","parts","part","range","trial","build","label","labels","quote","with","from","after","new","order","spec","rentokil","keysight","agilent","broadcom","almy","exzone","lumnia","assembly","cover","body","update","issue","validation","dimension","measurement"]);
+  const words = x.name.toLowerCase().split(/[^a-z0-9-]+/).filter(w=>w.length>3 && !STOP.has(w));
+  const hit = t => { t=(t||"").toLowerCase(); return words.some(w=>t.includes(w)); };
+  const rel = allActions().filter(a=>a.project===pid || hit(a.text) || hit(a.tag)).sort((a,b)=>(!!a.done)-(!!b.done));
   const notes = feedItems(pid).slice(0,15);
-  const meets = D.meetings.filter(m=>m.date>=todayISO() && words.some(w=>(m.title+" "+(m.sub||"")).toLowerCase().includes(w))).slice(0,5);
+  const meets = D.meetings.filter(m=>m.date>=todayISO() && hit(m.title+" "+(m.sub||""))).slice(0,5);
   $("popBody").innerHTML = `
     <div class="facts">
       <div><span class="eyebrow">Stage</span><b>${esc(STAGES[x.stage]||"")}</b></div>
@@ -414,8 +419,9 @@ if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.0";
+const APP_VERSION = "2.1";
 const CHANGES = [
+  {v:"2.1", date:"5 Oct 2026", items:["Tracker now reads every email in the inbox and sent items, not only team emails","Shows how many emails the last refresh read (name menu and Updates page)","Added missed projects: Sustainable hygiene range, Project Sub Zero, Bail Handle, IR cover, Avialite, Front Frame waiver, Eliminair, Gear Housing 166"]},
   {v:"2.0", date:"5 Oct 2026", items:[
     "New look matching BOM Studio: top menu, live clock and a name menu",
     "Summary tiles, pipeline and customer bars open the matching project list when clicked",
