@@ -282,7 +282,7 @@ function personModel(k){
   const C = capCfg(), t = todayISO(), wk = addDays(t,7), eff = effortMap();
   const projs = D.projects.filter(p=>p.owner===k);
   const acts = allActions().filter(a=>a.owner===k && !a.done);
-  const meets = D.meetings.filter(m=>m.date>=t && m.date<=wk && (m.who||[]).includes(k));
+  const meets = D.meetings.filter(m=>m.date>=t && m.date<=wk && m.time && (m.who||[]).includes(k)); // timed meetings only; all-day milestones are not meetings
   const withH = acts.filter(a=>eff[a.id] && +eff[a.id].hours>0);
   const actH = acts.reduce((s,a)=> s + (eff[a.id] && +eff[a.id].hours>0 ? +eff[a.id].hours : (a.urgent?C.urgentHours:C.actionHours)), 0);
   const projH = projs.reduce((s,p)=> s + (C.weights[p.complexity||"low"]||1), 0);
