@@ -20,7 +20,8 @@ const TEAM = ['rashid','fadzmi','liyana','yusri','zul','fakrul','wajdi','hairus'
 const TABS = {
   Tasks:   ['id','owner','text','tag','urgent','createdAt','createdBy','deleted'],
   Status:  ['id','done','by','at'],
-  Updates: ['id','at','owner','text','project']
+  Updates: ['id','at','owner','text','project'],
+  Effort:  ['id','hours','by','at']
 };
 
 function setup() {
@@ -66,6 +67,10 @@ function doPost(e) {
       const id = clean_(b.id, 60);
       const sh = sheet_('Tasks'), rows = sh.getDataRange().getValues();
       for (let r = 1; r < rows.length; r++) if (String(rows[r][0]) === id) sh.getRange(r + 1, TABS.Tasks.indexOf('deleted') + 1).setValue(now);
+    } else if (b.op === 'setHours') {
+      const id = clean_(b.id, 60), h = Number(b.hours);
+      if (!id || !(h >= 0 && h <= 200)) return out_({ ok: false, error: 'bad_hours' });
+      upsert_('Effort', 'id', id, { id: id, hours: h, by: who, at: now });
     } else if (b.op === 'post') {
       const text = clean_(b.text, 600);
       if (!text) return out_({ ok: false, error: 'empty' });
@@ -83,7 +88,7 @@ function doPost(e) {
 function snapshot_() {
   const tasks = read_('Tasks').filter(t => !t.deleted);
   const updates = read_('Updates');
-  return { ok: true, tasks: tasks, status: read_('Status'), updates: updates.slice(-300) };
+  return { ok: true, tasks: tasks, status: read_('Status'), updates: updates.slice(-300), effort: read_('Effort') };
 }
 function sheet_(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();

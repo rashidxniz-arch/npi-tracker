@@ -287,6 +287,31 @@ footer.site{border-top:1px solid var(--line);margin-top:8px;padding-top:14px;dis
 .news-ver h3{display:flex;gap:8px;align-items:baseline;text-transform:none;color:var(--navy);font-size:15px}
 .news-ver ul{margin:0;padding-left:18px;color:var(--ink-2);display:flex;flex-direction:column;gap:3px}
 .news-ver + .news-ver{border-top:1px solid var(--line-2);padding-top:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.03em;padding:4px 12px;border-radius:6px;text-transform:uppercase}
+.badge.NORMAL,.badge.NOT{background:var(--ok-bg);color:var(--ok)} .badge.HIGH,.badge.POTENTIAL{background:var(--warn-bg);color:var(--warn)} .badge.OVERLOADED,.badge.CRITICAL{background:var(--bad-bg);color:var(--bad)}
+.conf{font-family:var(--mono);font-size:12px;color:var(--ink-3)} .conf b{color:var(--ink)}
+.exec-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.exec p{margin:0;color:var(--ink-2);max-width:90ch}
+table.wl{width:100%;border-collapse:collapse;font-size:13px}
+table.wl th{background:var(--blue-softer);color:var(--navy);text-align:left;font-weight:600;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.wl td{padding:8px 10px;border-top:1px solid var(--line-2);vertical-align:top}
+table.wl tr[data-who]{cursor:pointer} table.wl tr[data-who]:hover{background:var(--blue-soft)}
+table.wl td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
+table.wl td.n.hot{color:var(--bad);font-weight:600}
+.tbl-scroll{overflow-x:auto}
+.cx{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:3px;white-space:nowrap}
+.cx.critical{background:var(--bad);color:#fff} .cx.high{background:var(--bad-bg);color:var(--bad)} .cx.medium{background:var(--warn-bg);color:var(--warn)} .cx.low{background:var(--sunk);color:var(--ink-3)}
+.recs{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--ink-2)}
+.meter{height:10px;background:var(--sunk);border-radius:5px;position:relative;overflow:hidden;min-width:90px}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--blue);border-radius:5px}
+.meter i.over{background:var(--bad)} .meter i.near{background:var(--warn)}
+.ev-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line-2);border:1px solid var(--line-2);border-radius:6px;overflow:hidden}
+.ev-grid div{background:#fff;padding:8px 10px;display:flex;flex-direction:column}
+.ev-grid b{font-family:var(--display);font-size:22px;color:var(--navy);line-height:1.1}
+.ev-grid b.hot{color:var(--bad)}
+@media (max-width:640px){.ev-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hrs{border:1px dashed var(--line);background:none;border-radius:4px;font-family:var(--mono);font-size:11px;color:var(--ink-3);padding:1px 6px;cursor:pointer;margin-left:4px}
+.hrs.set{border-style:solid;color:var(--navy);background:var(--blue-soft)}
 footer.site .exzone{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding-top:10px}
 footer.site .exzone img{height:34px;width:auto}
 footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spacing:.06em;color:var(--navy);font-size:13px;text-transform:uppercase;text-align:center}
@@ -315,6 +340,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
         <a href="#projects" data-view="projects">Projects <span class="cnt" id="nProj"></span></a>
         <a href="#actions" data-view="actions">Actions <span class="cnt" id="nAct"></span></a>
         <a href="#calendar" data-view="calendar">Calendar</a>
+        <a href="#workload" data-view="workload">Workload</a>
         <a href="#updates" data-view="updates">Updates</a>
       </nav>
       <div class="right">
@@ -355,7 +381,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
           </div>
           <div class="card"><div class="card-head"><h2>Needs attention</h2><span class="eyebrow">At risk · overdue · urgent</span></div><div class="card-body" id="attention"></div></div>
           <div class="card"><div class="card-head"><h2>Next 14 days</h2><span class="eyebrow">Due dates &amp; milestones</span></div><div class="card-body" id="deadlines"></div></div>
-          <div class="card"><div class="card-head"><h2>Team workload</h2><span class="eyebrow">Open actions · tap to filter</span></div><div class="card-body hbars" id="workload"></div></div>
+          <div class="card"><div class="card-head"><h2>Team workload</h2><span class="eyebrow">Est. hours vs capacity · tap for evidence</span></div><div class="card-body hbars" id="workload"></div></div>
           <div class="card"><div class="card-head"><h2>Projects by customer</h2><span class="eyebrow">Active projects</span></div><div class="card-body hbars" id="customers"></div></div>
         </div>
       </div>
@@ -410,6 +436,22 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
         <div class="pagehead"><div><h1>Calendar</h1><p>Meetings, trials and due dates · Malaysia time</p></div></div>
         <div class="filters" role="group" aria-label="Filter by team member" data-filters></div>
         <div class="panel" id="meetings"></div>
+      </div>
+    </section>
+
+    <!-- WORKLOAD -->
+    <section id="v-workload" data-v="workload" hidden>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="pagehead"><div><h1>NPI workload assessment</h1><p>Evidence-based: effort, complexity, concurrent issues and customer pressure, not just action count.</p></div></div>
+        <div class="card"><div class="card-head"><h2>Overall status</h2><span class="eyebrow" id="wlAsOf"></span></div><div class="card-body" id="wlExec"></div></div>
+        <div class="dash">
+          <div class="card"><div class="card-head"><h2>Main workload drivers</h2><span class="eyebrow">Weighted by issue complexity</span></div><div class="card-body hbars" id="wlDrivers"></div></div>
+          <div class="card"><div class="card-head"><h2>Recommended action</h2></div><div class="card-body" id="wlRecs"></div></div>
+        </div>
+        <div class="card"><div class="card-head"><h2>People requiring review</h2><span class="eyebrow">Tap a name for the evidence</span></div><div class="card-body" style="padding:0" id="wlReview"></div></div>
+        <div class="card"><div class="card-head"><h2>Resource opportunity</h2><span class="eyebrow">Estimated spare capacity</span></div><div class="card-body" style="padding:0" id="wlSpare"></div></div>
+        <div class="card"><div class="card-head"><h2>Team indicators</h2><span class="eyebrow">Tap a row for the evidence</span></div><div class="card-body" style="padding:0" id="wlTable"></div></div>
+        <div class="banner" id="wlNote"></div>
       </div>
     </section>
 

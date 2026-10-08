@@ -77,7 +77,7 @@ function ownerOptions(sel, withBlank){ return (withBlank?`<option value="">— C
 
 
 /* ---------- view state ---------- */
-const VIEWS = ["summary","projects","actions","calendar","updates"];
+const VIEWS = ["summary","projects","actions","calendar","workload","updates"];
 const HL = {ok:"On track", warn:"Watch", bad:"At risk"};
 const HORDER = {bad:0, warn:1, ok:2};
 let view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : (store.get("npi-view") || "summary");
@@ -110,7 +110,7 @@ function render(){
   const nOpen = acts.filter(a=>!a.done && (!me || a.owner===me)).length;
   $("nAct").textContent = nOpen || ""; $("nAct").title = me ? "Your open actions" : "Open actions";
   $("nAct").classList.toggle("bad", acts.some(a=>!a.done && a.urgent && (!me || a.owner===me)));
-  renderFilters(); renderKpis(); renderDash(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed(); renderView();
+  renderFilters(); renderKpis(); renderDash(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed(); renderWorkload(); renderView();
 }
 function projOptions(sel){
   return `<option value="">General update (no project)</option>` + D.projects.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${esc(p.id)}" ${p.id===sel?"selected":""}>${esc(p.name)}</option>`).join("");
@@ -192,10 +192,11 @@ function renderProjects(){
 function actionRow(x){
   return `<div class="row ${x.done?"done":""}">
     <input type="checkbox" class="check" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${x.done?"checked":""} ${SCRIPT_URL?"":"disabled"} aria-label="Done">
-    <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${esc(T(x.owner).short)}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}</div></label>
+    <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${esc(T(x.owner).short)}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}${!x.done&&SCRIPT_URL?hrsChip(x):""}</div></label>
     ${x.src==="team"&&SCRIPT_URL&&(x.createdBy===me||x.owner===me)?`<button class="linkbtn" type="button" data-del="${esc(x.id)}" aria-label="Remove task">Remove</button>`:"<span></span>"}
   </div>`;
 }
+function hrsChip(x){ const e=effortMap()[x.id]; const h=e&&+e.hours>0?+e.hours:""; return `<button type="button" class="hrs ${h?"set":""}" data-hrs="${esc(x.id)}" data-cur="${h}" title="Estimated hours to finish">${h?h+"h":"+ hrs"}</button>`; }
 function renderActions(){
   const list = allActions().filter(x=>match(x.owner) && (aShow==="all" || (aShow==="done") === !!x.done))
     .sort((x,y)=>(!!x.done)-(!!y.done) || (!!y.urgent)-(!!x.urgent) || String(x.createdAt||"").localeCompare(String(y.createdAt||"")));
@@ -261,18 +262,183 @@ function renderDash(){
     .sort((a,b)=>a.d.localeCompare(b.d));
   $("deadlines").innerHTML = items.length ? `<div class="alist">${items.slice(0,8).map(i=>`<button type="button" class="aitem" ${i.pid?`data-pid="${esc(i.pid)}"`:`data-go="calendar"`}><span class="dot" style="background:var(--blue)" aria-hidden="true"></span><div><div class="t">${esc(i.t)}</div><div class="s">${i.kind}${i.s&&i.s!==i.kind?" · "+esc(i.s):""}</div></div><span class="d">${fmtDate(i.d)}</span></button>`).join("")}</div>` : `<div class="empty" style="padding:0">No due dates in the next 14 days.</div>`;
 
-  const acts = allActions();
-  const rows = teamKeys().map(k=>({k, open:acts.filter(a=>a.owner===k&&!a.done).length, urgent:acts.filter(a=>a.owner===k&&!a.done&&a.urgent).length, p:D.projects.filter(x=>x.owner===k).length, r:D.projects.filter(x=>x.owner===k&&x.health==="bad").length}))
-    .sort((a,b)=>b.open-a.open || b.p-a.p);
-  const wmax = Math.max(1,...rows.map(r=>r.open));
-  $("workload").innerHTML = rows.map(r=>`<button type="button" class="hbar" data-k="${r.k}" aria-pressed="${filter===r.k}" data-tip="${esc(`<b>${esc(T(r.k).name)}</b><br>${r.open} open action${r.open===1?"":"s"}${r.urgent?` (${r.urgent} urgent)`:""}<br>${r.p} project${r.p===1?"":"s"}${r.r?`, ${r.r} at risk`:""}`)}" style="${filter!=="all"&&filter!==r.k?"opacity:.45":""}">
-      <span class="lbl">${esc(T(r.k).short)}</span><span class="track"><span class="fill" style="width:${r.open/wmax*100}%"></span></span><span class="val">${r.open}${r.r?`<em>${r.r} risk</em>`:""}</span></button>`).join("");
+  const rows = teamKeys().map(personModel).sort((a,b)=>b.load-a.load);
+  $("workload").innerHTML = rows.map(r=>`<button type="button" class="hbar" data-who="${r.k}" data-tip="${esc(`<b>${esc(T(r.k).name)}</b> · ${r.status}<br>Est. ${r.est}h/week vs ~${r.cap}h<br>${r.activeProjects} projects · ${r.openActions} open actions · ${r.critical} critical<br><i>Click for evidence</i>`)}" style="${filter!=="all"&&filter!==r.k?"opacity:.45":""}">
+      <span class="lbl">${esc(T(r.k).short)}</span><span class="track"><span class="fill" style="width:${Math.min(100,r.load*100)}%;${r.load>1?"background:var(--bad)":r.load>0.85?"background:var(--warn)":""}"></span></span><span class="val">${r.est}h${r.status!=="NOT OVERLOADED"?`<em>${r.status==="OVERLOADED"?"over":"watch"}</em>`:""}</span></button>`).join("");
 
   const byC = {}; projs.forEach(p=>{ const c=p.customer||"Internal / other"; (byC[c]=byC[c]||[]).push(p); });
   const crow = Object.entries(byC).sort((a,b)=>b[1].length-a[1].length);
   const cmax = Math.max(1,...crow.map(c=>c[1].length));
   $("customers").innerHTML = crow.length ? crow.map(([c,ps])=>{ const r=ps.filter(p=>p.health==="bad").length;
     return `<button type="button" class="hbar" data-cust="${esc(c)}" data-tip="${esc(`<b>${esc(c)}: ${ps.length}</b><br>`+ps.slice(0,6).map(p=>esc(p.name)).join("<br>")+(ps.length>6?`<br>+${ps.length-6} more`:""))}"><span class="lbl">${esc(c)}</span><span class="track"><span class="fill" style="width:${ps.length/cmax*100}%"></span></span><span class="val">${ps.length}${r?`<em>${r} risk</em>`:""}</span></button>`}).join("") : `<div class="empty" style="padding:0">No projects.</div>`;
+}
+
+
+/* ---------- workload assessment (evidence-based) ---------- */
+const CXW = {critical:4, high:3, medium:2, low:1};
+function effortMap(){ const m={}; (TD.effort||[]).forEach(e=>{ if(!m[e.id] || e.at>m[e.id].at) m[e.id]=e }); return m; }
+function capCfg(){ return Object.assign({weekHours:40, projectShare:0.75, mgmtHours:{}, weights:{critical:10,high:6,medium:3,low:1}, actionHours:0.5, urgentHours:1, meetingHours:1}, D.capacity||{}); }
+function personModel(k){
+  const C = capCfg(), t = todayISO(), wk = addDays(t,7), eff = effortMap();
+  const projs = D.projects.filter(p=>p.owner===k);
+  const acts = allActions().filter(a=>a.owner===k && !a.done);
+  const meets = D.meetings.filter(m=>m.date>=t && m.date<=wk && (m.who||[]).includes(k));
+  const withH = acts.filter(a=>eff[a.id] && +eff[a.id].hours>0);
+  const actH = acts.reduce((s,a)=> s + (eff[a.id] && +eff[a.id].hours>0 ? +eff[a.id].hours : (a.urgent?C.urgentHours:C.actionHours)), 0);
+  const projH = projs.reduce((s,p)=> s + (C.weights[p.complexity||"low"]||1), 0);
+  const mgmtH = (C.mgmtHours||{})[k] || 0;
+  const est = Math.round((projH + actH + meets.length*C.meetingHours + mgmtH)*10)/10;
+  const cap = Math.round(C.weekHours*C.projectShare);
+  const crit = projs.filter(p=>p.complexity==="critical");
+  const ev = {
+    k, projs, acts, meets, est, cap, mgmtH,
+    activeProjects: projs.length,
+    openActions: acts.length,
+    urgent: acts.filter(a=>a.urgent).length,
+    atRisk: projs.filter(p=>p.health==="bad").length,
+    custIssues: projs.filter(p=>p.customerIssue).length,
+    suppIssues: projs.filter(p=>p.supplier).length,
+    threads: projs.reduce((s,p)=>s+(p.threads||0),0),
+    escalations: projs.filter(p=>p.escalation).length,
+    due7: projs.filter(p=>p.asap || (p.due && p.due<=wk)).length,
+    customers: new Set(projs.map(p=>p.customer).filter(Boolean)).size,
+    critical: crit.length,
+    highPlus: projs.filter(p=>p.complexity==="critical"||p.complexity==="high").length,
+    hoursCoverage: acts.length ? withH.length/acts.length : 1
+  };
+  // independent indicators
+  const sig = [];
+  if(est > cap) sig.push(`estimated ${est}h/week vs ~${cap}h available`);
+  else if(est > cap*0.85) sig.push(`estimated ${est}h/week, close to ~${cap}h available`);
+  if(ev.critical>=1) sig.push(`${ev.critical} critical issue${ev.critical>1?"s":""} (${crit.map(p=>p.name.split(" ·")[0]).join(", ")})`);
+  if(ev.highPlus>=3) sig.push(`${ev.highPlus} high/critical-complexity projects at once`);
+  if(ev.activeProjects>=5) sig.push(`${ev.activeProjects} concurrent projects`);
+  if(ev.customers>=3) sig.push(`${ev.customers} customers in parallel`);
+  if(ev.escalations>=1) sig.push(`${ev.escalations} customer escalation${ev.escalations>1?"s":""}`);
+  if(ev.due7>=3) sig.push(`${ev.due7} projects due or overdue within 7 days`);
+  if(ev.urgent>=2) sig.push(`${ev.urgent} urgent actions`);
+  ev.signals = sig;
+  const effortKnown = ev.hoursCoverage>=0.7 && acts.length>0;
+  const strong = sig.length;
+  if(strong>=3 && est>cap && effortKnown){ ev.status="OVERLOADED"; ev.conf = strong>=5?"HIGH":"MEDIUM"; }
+  else if(strong>=3 || (est>cap && strong>=2)){ ev.status="POTENTIAL OVERLOAD"; ev.conf = effortKnown ? "MEDIUM" : (strong>=5 ? "MEDIUM" : "LOW"); }
+  else { ev.status="NOT OVERLOADED"; ev.conf = strong===0 ? (ev.activeProjects? "MEDIUM":"LOW") : "MEDIUM"; }
+  if(!effortKnown && ev.status!=="NOT OVERLOADED") ev.why = "Several workload indicators are high, but effort hours are estimated, not entered by the team.";
+  ev.load = cap ? est/cap : 0;
+  ev.driver = mainDriver(projs);
+  return ev;
+}
+const DRIVERS = [
+  ["Customer issue resolution", /waiver|rcca|complaint|escalat|out[- ]of[- ]spec|rib broken|failure|not working|containment|concession/i],
+  ["Engineering investigation", /investigat|dimension|dfm|mould[- ]flow|test|measurement|fair|root|feasib|firmware/i],
+  ["Tooling / trial activity", /trial|tool|insert|rectif|jig|fot|isir|gate|t-2|t1/i],
+  ["Supplier coordination", /toolmaker|supplier|tokyo|zhang|sunrise|vision|ek advanced|silcotech|sourcing|rfqs|vendor|resin|label sample/i],
+  ["Customer communication", /keysight|broadcom|customer|marelli|rentokil|agilent|communication|call|meeting|visit/i],
+  ["Urgent delivery recovery", /delivery|shipment|ship|crd|120 pcs|lot/i],
+  ["Quotation / commercial", /quot|cost|po\b|price|moq/i],
+  ["Documentation / ECO", /eco|drawing|drf|os\/is|documentation|artwork|manual|package/i]
+];
+function mainDriver(projs){
+  const sc = {}; projs.forEach(p=>(p.activities||[]).forEach(a=>DRIVERS.forEach(([n,re])=>{ if(re.test(a)) sc[n]=(sc[n]||0)+(CXW[p.complexity]||1); })));
+  const top = Object.entries(sc).sort((a,b)=>b[1]-a[1])[0];
+  return top ? top[0] : "—";
+}
+function teamModel(){
+  const people = teamKeys().map(personModel);
+  const C = capCfg();
+  const active = people.filter(p=>p.activeProjects||p.openActions);
+  const est = people.reduce((s,p)=>s+p.est,0), cap = active.length*Math.round(C.weekHours*C.projectShare);
+  const over = people.filter(p=>p.status==="OVERLOADED"), pot = people.filter(p=>p.status==="POTENTIAL OVERLOAD");
+  const crit = D.projects.filter(p=>p.complexity==="critical"), esc = D.projects.filter(p=>p.escalation);
+  const top3 = people.slice().sort((a,b)=>b.est-a.est).slice(0,3), top3share = est ? top3.reduce((s,p)=>s+p.est,0)/est : 0;
+  const cov = (()=>{ const a=allActions().filter(x=>!x.done), e=effortMap(); return a.length ? a.filter(x=>e[x.id]&&+e[x.id].hours>0).length/a.length : 0; })();
+  let status, conf;
+  const flagged = over.length + pot.length, util = cap ? est/cap : 0;
+  if((est>cap || over.length>=2) && crit.length>=3 && esc.length>=2){ status="CRITICAL"; conf="MEDIUM"; }
+  else if(est>cap && over.length>=2){ status="OVERLOADED"; conf= cov>=0.7?"HIGH":"MEDIUM"; }
+  else if((util>0.85 && flagged>=2) || flagged >= Math.max(3, Math.ceil(active.length*0.4))){ status="POTENTIAL OVERLOAD"; conf="MEDIUM"; }
+  else if(flagged>=1 || crit.length>=2){ status="HIGH"; conf="MEDIUM"; }
+  else { status="NORMAL"; conf= cov>=0.7?"HIGH":"MEDIUM"; }
+  if(cov<0.3 && status!=="NORMAL") conf = conf==="HIGH"?"MEDIUM":conf;
+  // drivers
+  const sc = {}; D.projects.forEach(p=>(p.activities||[]).forEach(a=>DRIVERS.forEach(([n,re])=>{ if(re.test(a)) sc[n]=(sc[n]||0)+(CXW[p.complexity]||1); })));
+  const drivers = Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+  return {people, active, est:Math.round(est), cap, over, pot, crit, esc, top3, top3share, cov, status, conf, drivers, util};
+}
+function renderWorkload(){
+  if(!$("wlExec")) return;
+  const M = teamModel(), C = capCfg();
+  $("wlAsOf").textContent = `Data as of ${fmtDate(D.lastSync)} ${String(D.lastSync).slice(11,16)}`;
+  const names = a => a.map(p=>T(p.k).short).join(", ");
+  const why = [
+    `NPI has ${M.active.length} active team members supporting ${D.projects.length} active projects across ${new Set(D.projects.map(p=>p.customer).filter(Boolean)).size} customers.`,
+    `Estimated load is about ${M.est}h/week against roughly ${M.cap}h of project time (${Math.round(C.projectShare*100)}% of a ${C.weekHours}h week per active member${(C.mgmtHours||{}).rashid?`, plus ${(C.mgmtHours||{}).rashid}h management for Rashid`:""}).`,
+    `Work is concentrated: ${names(M.top3)} carry ${Math.round(M.top3share*100)}% of the estimated load.`,
+    M.crit.length ? `${M.crit.length} critical issue${M.crit.length>1?"s":""} (${M.crit.map(p=>p.name.split(" ·")[0]).join("; ")}) drive most of the pressure${M.esc.length?`, with ${M.esc.length} customer escalation${M.esc.length>1?"s":""}`:""}.` : "",
+    M.over.length ? `${names(M.over)}: overloaded on multiple independent indicators.` : "",
+    M.util<=0.85 && (M.over.length+M.pot.length) ? `Team-wide load is about ${Math.round(M.util*100)}% of estimated capacity, so the pressure is concentrated on a few people rather than the whole department.` : "",
+    M.pot.length ? `${names(M.pot)}: potential overload — several indicators are high.` : "",
+    `Action count alone is not used to judge overload. ${M.cov<0.7 ? `Effort hours are entered for only ${Math.round(M.cov*100)}% of open actions, so hours are estimated from issue complexity; more effort-hour data is needed before concluding the department is structurally overloaded.` : "Effort hours are entered for most open actions."}`
+  ].filter(Boolean);
+  $("wlExec").innerHTML = `<div class="exec"><div class="exec-top"><span class="badge ${M.status.split(" ")[0]}">${M.status}</span><span class="conf">Confidence: <b>${M.conf}</b></span></div>
+    <p style="margin-top:10px">${why.map(esc).join(" ")}</p></div>`;
+  const dmax = Math.max(1,...M.drivers.map(d=>d[1]));
+  $("wlDrivers").innerHTML = M.drivers.map(([n,v])=>`<div class="hbar" style="grid-template-columns:minmax(150px,190px) minmax(0,1fr) auto"><span class="lbl" title="${esc(n)}">${esc(n)}</span><span class="track"><span class="fill" style="width:${v/dmax*100}%"></span></span><span class="val">${v}</span></div>`).join("");
+  // people requiring review
+  const rev = M.people.filter(p=>p.status!=="NOT OVERLOADED" || p.signals.length>=2 || p.load>1).sort((a,b)=>b.load-a.load);
+  $("wlReview").innerHTML = rev.length ? `<div class="tbl-scroll"><table class="wl"><thead><tr><th>Person</th><th>Workload</th><th>Main driver</th><th>Evidence</th><th>Assessment</th></tr></thead><tbody>${rev.map(p=>`
+    <tr data-who="${p.k}"><td><b>${esc(T(p.k).name)}</b></td><td style="min-width:120px">${meter(p)}<div class="conf">${p.est}h / ~${p.cap}h</div></td><td>${esc(p.driver)}</td><td>${esc(p.signals.slice(0,4).join("; "))}</td>
+    <td><span class="badge ${p.status.split(" ")[0]}" style="font-size:12px;padding:2px 8px">${p.status}</span><div class="conf">Confidence: <b>${p.conf}</b></div></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No one currently shows several high workload indicators.</div>`;
+  // resource opportunity
+  const spare = M.people.filter(p=>p.status==="NOT OVERLOADED" && p.load<0.6).sort((a,b)=>a.load-b.load);
+  $("wlSpare").innerHTML = spare.length ? `<div class="tbl-scroll"><table class="wl"><thead><tr><th>Person</th><th>Available capacity (est.)</th><th>Suitable support area</th></tr></thead><tbody>${spare.map(p=>`
+    <tr data-who="${p.k}"><td><b>${esc(T(p.k).name)}</b><div class="conf">${esc(T(p.k).role||"")}</div></td><td>~${Math.max(0,Math.round(p.cap-p.est))}h/week${p.activeProjects<2?'<div class="conf">Low confidence: little of this person’s work is in the tracker</div>':""}</td><td>${esc(supportArea(p.k))}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No clear spare capacity in the estimate.</div>`;
+  if(spare.length) $("wlSpare").innerHTML += `<div class="conf" style="padding:8px 14px">Only work recorded in the NPI Tracker is counted. Production, tooling-room and purchasing work outside the tracker is not visible here, so confirm with the person before reassigning anything.</div>`;
+  // recommendations
+  const recs = [];
+  if(M.cov<0.7) recs.push(`Add estimated hours to every open action (tap “+ hrs” in Actions). Only ${Math.round(M.cov*100)}% have hours today, which keeps confidence at ${M.conf}.`);
+  if(M.over.length+M.pot.length) recs.push(`Redistribute routine follow-ups (quotes, label samples, documentation, supplier chasing) away from ${names(M.over.concat(M.pot))} so they can focus on ${M.crit.length?"the critical customer issues":"their high-complexity projects"}.`);
+  if(M.crit.length) recs.push(`Separate engineering work from administrative follow-up on critical issues: one owner for the technical fix, another for customer/supplier communication and delivery coordination.`);
+  if(M.top3share>0.45) recs.push(`Review projects per engineer: ${names(M.top3)} carry ${Math.round(M.top3share*100)}% of the estimated load.`);
+  if(spare.length) recs.push(`Use available capacity from ${names(spare.slice(0,4))} for suitable support areas (see Resource opportunity).`);
+  if(C.mgmtHours && C.mgmtHours.rashid) recs.push(`Review management/coordination workload separately from engineering workload (Rashid's oversight of ${D.projects.length} projects).`);
+  recs.push(`Consider extra manpower only if overload is still shown after redistribution and with real effort hours for 4+ weeks.`);
+  $("wlRecs").innerHTML = `<ol class="recs">${recs.map(r=>`<li>${esc(r)}</li>`).join("")}</ol>`;
+  // full table
+  const cols = [["activeProjects","Projects"],["openActions","Open actions"],["urgent","Urgent"],["atRisk","At risk"],["custIssues","Customer issues"],["suppIssues","Supplier issues"],["threads","Issue threads"],["escalations","Escalations"],["due7","Due ≤7d"],["customers","Customers"],["critical","Critical"]];
+  const hot = {urgent:2,atRisk:1,escalations:1,critical:1,activeProjects:5,customers:3,due7:3};
+  $("wlTable").innerHTML = `<div class="tbl-scroll"><table class="wl"><thead><tr><th>Person</th>${cols.map(c=>`<th style="text-align:right">${c[1]}</th>`).join("")}<th>Est. h/week</th><th>Assessment</th></tr></thead><tbody>${
+    M.people.slice().sort((a,b)=>b.load-a.load).map(p=>`<tr data-who="${p.k}"><td><b>${esc(T(p.k).short)}</b></td>${cols.map(([c])=>`<td class="n ${hot[c]&&p[c]>=hot[c]?"hot":""}">${p[c]}</td>`).join("")}<td style="min-width:110px">${meter(p)}<div class="conf">${p.est}h / ~${p.cap}h</div></td><td><span class="cx ${p.status==="OVERLOADED"?"critical":p.status==="POTENTIAL OVERLOAD"?"medium":"low"}">${p.status}</span></td></tr>`).join("")}</tbody></table></div>`;
+  $("wlNote").innerHTML = `<b>How this is worked out.</b> Each project carries an issue complexity (Low / Medium / High / Critical) and the activities needed to close it, taken from the related email threads — a 20-message thread counts as one issue, not 20 tasks. Estimated hours = complexity weight per project (${Object.entries(C.weights).map(([k,v])=>`${k} ${v}h`).join(", ")}) + open actions (${C.actionHours}h, urgent ${C.urgentHours}h, or the hours the team enters) + meetings this week. Nobody is marked overloaded on action count alone. <b>Email activity is used only to understand what work an issue needs, never to measure or rank individual performance.</b>`;
+}
+function supportArea(k){
+  const r = (T(k).role||"").toLowerCase();
+  if(/tool/.test(r)) return "Tooling follow-up and trial support on critical tooling issues";
+  if(/rfq|quot/.test(r)) return "Quotation and supplier follow-ups for other engineers";
+  if(/doc|dcc|drawing/.test(r)) return "ECO, drawing and documentation follow-ups";
+  if(/market|sales|customer/.test(r)) return "Customer communication and quotation follow-up";
+  return "Supplier chasing, samples, documentation and meeting follow-ups";
+}
+function meter(p){ const w=Math.min(100,p.load*100); return `<div class="meter"><i class="${p.load>1?"over":p.load>0.85?"near":""}" style="width:${w}%"></i></div>`; }
+function openEvidence(k){
+  const p = personModel(k), t = todayISO();
+  $("popTitle").textContent = `Workload evidence · ${T(k).name}`;
+  $("popSub").textContent = T(k).role || "";
+  const box = (l,v,h) => `<div><span class="eyebrow">${l}</span><b class="${h?"hot":""}">${v}</b></div>`;
+  const rows = p.projs.slice().sort((a,b)=>(CXW[b.complexity]||0)-(CXW[a.complexity]||0)).map(x=>`<tr data-pid="${esc(x.id)}"><td><b>${esc(x.name)}</b></td><td>${esc(x.customer||"—")}</td><td><span class="cx ${esc(x.complexity||"low")}">${esc((x.complexity||"low").toUpperCase())}</span><div class="conf">${esc(x.healthLabel||"")}</div></td><td style="min-width:200px">${(x.activities||[]).map(a=>"• "+esc(a)).join("<br>")}</td><td class="nowrap">${x.asap?'<span class="mono late">ASAP</span>':x.due?dueHtml(x):"—"}</td><td><span class="pill ${esc(x.health)}">${esc({ok:"Low",warn:"Medium",bad:"High"}[x.health]||"")}</span></td></tr>`).join("");
+  $("popBody").innerHTML = `
+    <div class="exec-top"><span class="badge ${p.status.split(" ")[0]}">${p.status}</span><span class="conf">Confidence: <b>${p.conf}</b></span></div>
+    <p class="txt">${p.signals.length ? "Evidence: "+esc(p.signals.join("; "))+"." : "No independent workload indicator is high."} ${p.why?esc(p.why):""}</p>
+    <div class="ev-grid">
+      ${box("Active projects",p.activeProjects,p.activeProjects>=5)}${box("Open actions",p.openActions)}${box("Est. hours/week",p.est+"h",p.load>1)}${box("Urgent",p.urgent,p.urgent>=2)}${box("At risk",p.atRisk,p.atRisk>=1)}
+      ${box("Customer issues",p.custIssues,p.custIssues>=1)}${box("Supplier issues",p.suppIssues)}${box("Issue threads",p.threads)}${box("Escalations",p.escalations,p.escalations>=1)}${box("Due ≤ 7 days",p.due7,p.due7>=3)}
+    </div>
+    <div class="conf">Estimate: ${p.est}h/week vs ~${p.cap}h available for project work${p.mgmtH?` (incl. ${p.mgmtH}h management)`:""}. Hours entered by the team for ${Math.round(p.hoursCoverage*100)}% of open actions.</div>
+    <div><h3>Current major activities</h3>${rows?`<div class="tbl-scroll" style="margin-top:6px"><table class="wl"><thead><tr><th>Project</th><th>Customer</th><th>Issue</th><th>Activity</th><th>Deadline</th><th>Risk</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<p class="txt">No projects owned.</p>`}</div>
+    ${p.acts.length?`<div><h3>Open actions (${p.acts.length})</h3><div class="panel" style="margin-top:6px">${p.acts.map(actionRow).join("")}</div></div>`:""}
+    ${p.meets.length?`<div><h3>Meetings in the next 7 days</h3><p class="txt">${p.meets.map(m=>`${fmtDate(m.date)} ${esc(m.time||"")} · ${esc(m.title)}`).join("<br>")}</p></div>`:""}
+    <p class="conf">Used for workload planning only — not a performance measure.</p>`;
+  popPid = ""; const dlg=$("pop"); if(!dlg.open) dlg.showModal(); $("popBody").scrollTop=0;
 }
 
 /* ---------- project pop-up ---------- */
@@ -297,6 +463,7 @@ function openProject(pid){
     </div>
     <div>${stageBar(x.stage)}</div>
     ${x.update?`<div><h3>Status</h3><p class="txt">${esc(x.update)}</p></div>`:""}
+    ${(x.activities||[]).length?`<div><h3>Issue activity <span class="cx ${esc(x.complexity||"low")}" style="vertical-align:1px">${esc((x.complexity||"low").toUpperCase())}</span></h3><p class="txt">${x.activities.map(esc).join(" · ")}${x.threads?` <span class="conf">(${x.threads} email thread${x.threads>1?"s":""})</span>`:""}</p></div>`:""}
     ${x.next?`<div><h3>Next step</h3><p class="txt">${esc(x.next)} ${dueHtml(x)}</p></div>`:""}
     ${meets.length?`<div><h3>Coming up</h3><div class="panel">${meets.map(m=>`<div class="row two"><div class="when">${fmtDate(m.date).split(" ").slice(1).join(" ")}<b>${esc(m.time||"—")}</b></div><div><div class="t">${esc(m.title)}</div><div class="s">${esc(m.sub||"")}</div></div></div>`).join("")}</div></div>`:""}
     ${rel.length?`<div><h3>Related actions</h3><div class="panel" id="popActs">${rel.slice(0,10).map(actionRow).join("")}</div></div>`:""}
@@ -351,6 +518,10 @@ document.addEventListener("click", e=>{
   if(nv){ e.preventDefault(); go(nv.dataset.view || "summary"); return; }
   const f = e.target.closest(".chip,.person,button.hbar[data-k]");
   if(f){ const k=f.dataset.k; filter=(filter===k&&k!=="all")?"all":k; render(); return; }
+  const wh = e.target.closest("[data-who]");
+  if(wh){ openEvidence(wh.dataset.who); return; }
+  const hb = e.target.closest("[data-hrs]");
+  if(hb){ e.preventDefault(); const cur=hb.dataset.cur||""; const v=prompt("Estimated hours still needed to finish this action?", cur); if(v!==null){ const h=parseFloat(v); if(isNaN(h)||h<0||h>200){ toast("Enter hours between 0 and 200"); } else send({op:"setHours", id:hb.dataset.hrs, hours:h}, "Hours saved"); } return; }
   const pid = e.target.closest("[data-pid]");
   if(pid && !e.target.closest(".check,label,[data-del]")){ e.preventDefault(); openProject(pid.dataset.pid); return; }
   const g = e.target.closest("[data-go]"); if(g){ go(g.dataset.go); return; }
@@ -419,8 +590,9 @@ if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.1";
+const APP_VERSION = "2.2";
 const CHANGES = [
+  {v:"2.2", date:"8 Oct 2026", items:["New Workload page: evidence-based assessment (Normal / High / Potential overload / Overloaded / Critical) with confidence level","Overload is judged on effort, issue complexity, concurrent projects and customers, escalations and due dates — not on action count","Tap a person (Workload page or Summary) for their workload evidence and current major activities","Each project shows its issue complexity and the activities needed to close it, from grouped email threads","Add estimated hours to any open action with “+ hrs”"]},
   {v:"2.1", date:"5 Oct 2026", items:["Tracker now reads every email in the inbox and sent items, not only team emails","Shows how many emails the last refresh read (name menu and Updates page)","Added missed projects: Sustainable hygiene range, Project Sub Zero, Bail Handle, IR cover, Avialite, Front Frame waiver, Eliminair, Gear Housing 166"]},
   {v:"2.0", date:"5 Oct 2026", items:[
     "New look matching BOM Studio: top menu, live clock and a name menu",
