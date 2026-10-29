@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="mobile.css">
 <style>
 :root{
   --navy:#003366; --blue:#0b6bcb; --blue-soft:#e8eef6; --blue-softer:#f3f6fb;
@@ -365,6 +366,15 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     </div>
   </header>
 
+
+  <nav class="mobile-nav" id="mobileNav" aria-label="Mobile sections">
+    <a href="#summary" data-view="summary" aria-label="Summary"><span class="mi">▦</span><span>Summary</span></a>
+    <a href="#projects" data-view="projects" aria-label="Projects"><span class="mi">▤</span><span>Projects</span><span class="cnt" id="mNProj"></span></a>
+    <a href="#actions" data-view="actions" aria-label="Actions"><span class="mi">✓</span><span>Actions</span><span class="cnt" id="mNAct"></span></a>
+    <a href="#calendar" data-view="calendar" aria-label="Calendar"><span class="mi">▣</span><span>Calendar</span></a>
+    <a href="#workload" data-view="workload" aria-label="Workload"><span class="mi">◷</span><span>Workload</span></a>
+    <a href="#updates" data-view="updates" aria-label="Updates"><span class="mi">↻</span><span>Updates</span></a>
+  </nav>
   <main class="wrap">
     <div id="banner" hidden></div>
 
