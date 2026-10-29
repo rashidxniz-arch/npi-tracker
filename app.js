@@ -60,7 +60,8 @@ async function send(payload, okMsg){
 
 /* ---------- derived view ---------- */
 const T = k => (D && D.team[k]) || {name:k||"Unassigned", short:k||"—", ini:"?", role:""};
-function teamKeys(){ return Object.keys(D.team).sort((a,b)=>(D.team[a].order??99)-(D.team[b].order??99)) }
+const ACTIVE_TEAM = new Set(["rashid","fadzmi","liyana","yusri","zul","fakrul","wajdi","shamsuri"]);
+function teamKeys(){ return Object.keys(D.team).filter(k=>ACTIVE_TEAM.has(k)).sort((a,b)=>(D.team[a].order??99)-(D.team[b].order??99)) }
 const match = o => filter==="all" || o===filter;
 const av = k => `<span class="av" aria-hidden="true">${esc(T(k).ini)}</span>`;
 function statusMap(){ const m={}; (TD.status||[]).forEach(s=>{ if(!m[s.id] || s.at>m[s.id].at) m[s.id]=s }); return m; }
@@ -117,7 +118,9 @@ function projOptions(sel){
 }
 function renderView(){
   VIEWS.forEach(v=>{ $("v-"+v).hidden = v!==view; });
-  document.querySelectorAll("#nav a").forEach(a=>{ if(a.dataset.view===view) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  document.querySelectorAll("[data-view]").forEach(a=>{ if(a.dataset.view===view) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  if($("mNProj")) $("mNProj").textContent = $("nProj").textContent;
+  if($("mNAct")) $("mNAct").textContent = $("nAct").textContent;
   document.querySelectorAll("[data-layout]").forEach(x=>x.setAttribute("aria-pressed", String(x.dataset.layout===layout)));
   document.querySelectorAll("[data-ashow]").forEach(x=>x.setAttribute("aria-pressed", String(x.dataset.ashow===aShow)));
   document.body.classList.toggle("desk", desk); $("deskBtn").setAttribute("aria-checked", String(desk));
@@ -514,7 +517,7 @@ function menu(open){ $("meMenu").hidden=!open; $("meBtn").setAttribute("aria-exp
 document.addEventListener("click", e=>{
   if(!e.target.closest(".menu")) menu(false);
   if(e.target.closest("#meBtn")){ menu($("meMenu").hidden); return; }
-  const nv = e.target.closest("#nav a, a.brand");
+  const nv = e.target.closest("#nav a, #mobileNav a, a.brand");
   if(nv){ e.preventDefault(); go(nv.dataset.view || "summary"); return; }
   const f = e.target.closest(".chip,.person,button.hbar[data-k]");
   if(f){ const k=f.dataset.k; filter=(filter===k&&k!=="all")?"all":k; render(); return; }
@@ -590,8 +593,9 @@ if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 const CHANGES = [
+  {v:"2.3", date:"30 Oct 2026", items:["Mobile-first bottom navigation for Android and iPhone","Improved touch targets, compact project cards and phone-safe spacing","Mobile navigation stays in sync with the current page"]},
   {v:"2.2", date:"8 Oct 2026", items:["New Workload page: evidence-based assessment (Normal / High / Potential overload / Overloaded / Critical) with confidence level","Overload is judged on effort, issue complexity, concurrent projects and customers, escalations and due dates — not on action count","Tap a person (Workload page or Summary) for their workload evidence and current major activities","Each project shows its issue complexity and the activities needed to close it, from grouped email threads","Add estimated hours to any open action with “+ hrs”"]},
   {v:"2.1", date:"5 Oct 2026", items:["Tracker now reads every email in the inbox and sent items, not only team emails","Shows how many emails the last refresh read (name menu and Updates page)","Added missed projects: Sustainable hygiene range, Project Sub Zero, Bail Handle, IR cover, Avialite, Front Frame waiver, Eliminair, Gear Housing 166"]},
   {v:"2.0", date:"5 Oct 2026", items:[
