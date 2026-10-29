@@ -15,7 +15,7 @@
 
 const TEAM_CODE = 'CHANGE-ME'; // set your passcode here (not stored in GitHub)
 
-const TEAM = ['rashid','fadzmi','liyana','yusri','zul','fakrul','wajdi','hairus','rajoo','ainin','shamsuri','helen'];
+const TEAM = ['rashid','fadzmi','liyana','yusri','zul','fakrul','wajdi','shamsuri'];
 
 const TABS = {
   Tasks:   ['id','owner','text','tag','urgent','createdAt','createdBy','deleted'],
