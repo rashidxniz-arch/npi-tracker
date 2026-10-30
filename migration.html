@@ -82,7 +82,10 @@ function makePlan(p){
  const updates=rows(t.updates,"update").map(x=>({id:"sheet-"+x.id,data:{...x.data,legacyOwner:x.data.owner||"",createdBy:u,source:"google-sheets"}}));
  const status=rows(t.status,"status");
  const effort=rows(t.effort,"effort");
- const team=Object.entries(d.team||{}).map(([id,data])=>({id,data:{...data,key:id}}));
+ const currentNpiMembers = ['rashid','fadzmi','liyana','yusri','zul','fakrul','wajdi','shamsuri'];
+ const team=Object.entries(d.team||{})
+  .filter(([id])=>currentNpiMembers.includes(String(id).toLowerCase()))
+  .map(([id,data])=>({id,data:{...data,key:id}}));
  return {projects,actions,tasks,meetings,updates,status,effort,team};
 }
 function renderCounts(plan){
