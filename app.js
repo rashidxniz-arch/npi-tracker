@@ -12,7 +12,11 @@ const fmtDate = s => { const d=dt(s); return isNaN(d) ? "" : `${DOW[d.getDay()]}
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` }
 const store = { get(k){ try{return localStorage.getItem(k)||""}catch(e){return ""} }, set(k,v){ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k) }catch(e){} } };
 
-let code = store.get("npi-code"), me = store.get("npi-me");
+let code = "", me = store.get("npi-me");
+const firebaseConfig = window.NPI_CONFIG && window.NPI_CONFIG.firebase;
+if (firebaseConfig && window.firebase && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const firebaseAuth = window.firebase ? firebase.auth() : null;
+const firestore = window.firebase ? firebase.firestore() : null;
 let D = null;                                   // tracker from Claude
 let TD = {tasks:[], status:[], updates:[]};     // team data from Google Sheet
 let teamOk = !!SCRIPT_URL, filter = "all", feedLimit = 25;
@@ -586,12 +590,30 @@ async function open(pass){
 }
 $("lockForm").onsubmit = async e=>{
   e.preventDefault();
-  const btn=$("lockBtn"), err=$("lockErr"); btn.disabled=true; err.hidden=true; btn.textContent="Signing in…";
-  try{ await open($("code").value.trim()); }
-  catch(x){ err.hidden=false; err.textContent = x.message==="badcode" ? "That passcode isn't right. Check with Rashid." : "Couldn't load the tracker. Check your connection."; }
+  const btn=$("lockBtn"), err=$("lockErr");
+  btn.disabled=true; err.hidden=true; btn.textContent="Verifying account…";
+  try{
+    if(!firebaseAuth || !firestore) throw new Error("Firebase SDK is unavailable. Refresh the page and try again.");
+    const email=$("firebaseEmail").value.trim().toLowerCase();
+    const credential=await firebaseAuth.signInWithEmailAndPassword(email,$("firebasePassword").value);
+    const profileSnap=await firestore.collection("users").doc(credential.user.uid).get();
+    if(!profileSnap.exists) throw new Error("Your account has no NPI Tracker profile. Ask Rashid to provision it.");
+    const profile=profileSnap.data();
+    if(profile.active!==true) throw new Error("Your NPI Tracker account is inactive. Contact Rashid.");
+    me=String(profile.name||profile.displayName||email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g,"");
+    const oldPass=$("code").value.trim();
+    btn.textContent="Opening existing tracker…";
+    await open(oldPass);
+  }catch(x){
+    err.hidden=false;
+    err.textContent = x.code==="auth/invalid-credential" || x.code==="auth/wrong-password" || x.code==="auth/user-not-found"
+      ? "Email or password is incorrect."
+      : x.message==="badcode" ? "The existing tracker passcode is incorrect."
+      : (x.message || "Sign-in failed. Check your connection and try again.");
+    if(firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut().catch(()=>{});
+  }
   btn.disabled=false; btn.textContent="Sign in";
 };
-if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
