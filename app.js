@@ -40,18 +40,86 @@ async function loadTracker(pass){
 const FIRESTORE_READ_ONLY = false;
 async function loadFirestoreData(){
   if(!firestore || !firebaseAuth || !firebaseAuth.currentUser) throw new Error("Firebase session is not available.");
-  const names=["projects","tasks","meetings","status","updates","workload","team"];
+  const names=["projects","tasks","meetings","status","updates","workload","team","emailSnapshotProjects","emailSnapshotActions","emailSnapshotEvidence","emailSnapshotMeta"];
   const snaps=await Promise.all(names.map(n=>firestore.collection(n).get()));
   const data={}; names.forEach((n,i)=>data[n]=snaps[i].docs.map(doc=>({docId:doc.id,...doc.data()})));
-  const projects=data.projects.map(x=>({...x,id:x.id||x.docId}));
-  const actions=data.tasks.filter(x=>x.source==="tracker").map(x=>({...x,id:x.id||x.docId}));
-  const teamTasks=data.tasks.filter(x=>x.source==="google-sheets").map(x=>({...x,id:x.id||x.docId}));
   const team={};
   data.team.forEach(x=>{const k=String(x.key||x.docId).toLowerCase();team[k]={...x,...(x.key?{}:{key:k})};});
+  const meta=data.emailSnapshotMeta.find(x=>x.docId==="current");
+  let projects, actions, teamTasks;
+  if(meta && data.emailSnapshotProjects.length){
+    const ownerKey = raw => {
+      const v=String(raw||"").toLowerCase();
+      if(/fadzmi/.test(v)) return "fadzmi";
+      if(/liyana/.test(v)) return "liyana";
+      if(/yusri/.test(v)) return "yusri";
+      if(/zul/.test(v)) return "zul";
+      if(/fakrul/.test(v)) return "fakrul";
+      if(/wajdi/.test(v)) return "wajdi";
+      if(/shamsuri/.test(v)) return "shamsuri";
+      return "rashid";
+    };
+    const stageOf = x => {
+      const v=(String(x.Workstream||"")+" "+String(x["Latest Status"]||"")).toLowerCase();
+      if(/release|production|certif|submission/.test(v)) return 5;
+      if(/build|pilot|shipment|sample|po received/.test(v)) return 4;
+      if(/trial|fai|measurement|doe|validation|is ir|is ir/.test(v)) return 3;
+      if(/tool|jig|mold|mould/.test(v)) return 2;
+      if(/dfm|design|gerber|artwork|eco|regulatory/.test(v)) return 1;
+      return 0;
+    };
+    const healthOf = x => {
+      const v=String(x["Latest Status"]||"").toLowerCase();
+      return /risk|delay|paused|gated|urgent|challenged|not feasible|blocked/.test(v) ? "bad" :
+        /watch|pending|review|waiting|planned|open|not confirmed|quotation|review mostly/.test(v) ? "warn" : "ok";
+    };
+    const isoDate = raw => {
+      const v=String(raw||"");
+      const m=v.match(/(\\d{1,2})\\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+(2026)/i);
+      if(m){const months=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];return "2026-"+String(months.indexOf(m[2].toLowerCase())+1).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0");}
+      return "";
+    };
+    projects=data.emailSnapshotProjects.map((x,i)=>({
+      id:"email-project-"+String(i+1).padStart(3,"0"),
+      name:String(x["Project / Programme"]||"Unnamed project"),
+      customer:String(x.Customer||""),
+      owner:ownerKey(x["Mentioned Owner / Contact"]),
+      stage:stageOf(x),health:healthOf(x),
+      healthLabel:healthOf(x)==="bad"?"At risk":healthOf(x)==="warn"?"Watch":"On track",
+      update:String(x["Latest Evidence / Update"]||""),
+      next:String(x["Next Action"]||""),
+      due:isoDate(x["Latest Email Date"]),
+      asap:/urgent|at risk|gated/i.test(String(x["Latest Status"]||"")),
+      updatedAt:isoDate(x["Latest Email Date"]),
+      complexity:/critical|paused|EOL|firmware/i.test(String(x["Risk / Notes"]||""))?"high":"normal",
+      escalation:healthOf(x)==="bad",
+      activities:[String(x.Workstream||""),String(x["Next Action"]||"")].filter(Boolean),
+      emailDate:String(x["Latest Email Date"]||""),
+      riskNotes:String(x["Risk / Notes"]||""),
+      evidence:String(x["Latest Evidence / Update"]||"")
+    }));
+    const projectFor = raw => projects.find(p=>p.name.toLowerCase().includes(String(raw||"").toLowerCase()) || String(raw||"").toLowerCase().includes(p.name.toLowerCase().split(" – ")[0])) || projects.find(p=>String(raw||"").toLowerCase().includes(p.name.toLowerCase().split(" ")[0])) || null;
+    actions=data.emailSnapshotActions.map((x,i)=>{
+      const p=projectFor(x.Project);
+      const state=String(x["Latest State"]||"").toLowerCase();
+      return {id:"email-action-"+String(i+1).padStart(3,"0"),source:"email-snapshot",src:"claude",
+        text:String(x.Action||""),owner:ownerKey(x["Mentioned Owner / Team"]),
+        tag:String(x.Project||""),project:p?p.id:"",
+        urgent:/urgent|critical|at risk|blocked/i.test(state+" "+String(x["Evidence / Notes"]||"")),
+        done:/done|complete|closed|accepted|shipped|submitted/i.test(state),
+        createdAt:"2026-10-30T00:00:00.000Z",emailState:String(x["Latest State"]||""),
+        dueText:String(x["Due / Target"]||""),evidence:String(x["Evidence / Notes"]||"")};
+    });
+    teamTasks=[];
+  } else {
+    projects=data.projects.map(x=>({...x,id:x.id||x.docId}));
+    actions=data.tasks.filter(x=>x.source==="tracker").map(x=>({...x,id:x.id||x.docId}));
+    teamTasks=data.tasks.filter(x=>x.source==="google-sheets").map(x=>({...x,id:x.id||x.docId}));
+  }
   D={projects,actions,meetings:data.meetings.map(x=>({...x,id:x.id||x.docId})),team,lastSync:"",coverage:null};
   TD={ok:true,tasks:teamTasks,status:data.status,updates:data.updates,effort:data.workload};
   teamOk=true;
-  return {projects:projects.length,actions:actions.length,teamTasks:teamTasks.length,meetings:D.meetings.length,status:TD.status.length,updates:TD.updates.length,team:data.team.length};
+  return {projects:projects.length,actions:actions.length,teamTasks:teamTasks.length,meetings:D.meetings.length,status:TD.status.length,updates:TD.updates.length,team:data.team.length,snapshot:!!meta};
 }
 async function loadTeam(){
   if(FIRESTORE_READ_ONLY){ await loadFirestoreData(); return; }
@@ -666,8 +734,8 @@ $("lockForm").onsubmit = async e=>{
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadFirestoreData().then(render).catch(e=>console.warn("Background refresh failed",e)); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.8";
-const CHANGES = [
+const APP_VERSION = "2.9";
+const CHANGES = [\n  {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},
   {v:"2.8", date:"30 Oct 2026", items:["Enabled Firestore-backed task creation and team assignment","Added task reassignment, completion, progress updates and effort-hour writes","Added append-only audit events for key task and progress changes"]},
   {v:"2.7", date:"30 Oct 2026", items:["Added Firestore-backed read-only dashboard validation","Loaded migrated projects, tracker actions, team tasks, meetings, status and team reference data from Firestore","Disabled editing temporarily while shared-data validation is completed"]},
   {v:"2.6", date:"30 Oct 2026", items:["Applied the new NPI Tracker electric-blue and navy brand palette","Updated PWA browser theme and added a dedicated NPI Tracker vector app icon"]},
