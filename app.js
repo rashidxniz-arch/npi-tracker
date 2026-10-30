@@ -594,8 +594,9 @@ if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 const CHANGES = [
+  {v:"2.4", date:"30 Oct 2026", items:["Fixed the iPhone profile dropdown so it opens below the name button","Profile menu now stays closed when the app starts"]},
   {v:"2.3", date:"30 Oct 2026", items:["Mobile-first bottom navigation for Android and iPhone","Improved touch targets, compact project cards and phone-safe spacing","Mobile navigation stays in sync with the current page"]},
   {v:"2.2", date:"8 Oct 2026", items:["New Workload page: evidence-based assessment (Normal / High / Potential overload / Overloaded / Critical) with confidence level","Overload is judged on effort, issue complexity, concurrent projects and customers, escalations and due dates — not on action count","Tap a person (Workload page or Summary) for their workload evidence and current major activities","Each project shows its issue complexity and the activities needed to close it, from grouped email threads","Add estimated hours to any open action with “+ hrs”"]},
   {v:"2.1", date:"5 Oct 2026", items:["Tracker now reads every email in the inbox and sent items, not only team emails","Shows how many emails the last refresh read (name menu and Updates page)","Added missed projects: Sustainable hygiene range, Project Sub Zero, Bail Handle, IR cover, Avialite, Front Frame waiver, Eliminair, Gear Housing 166"]},
