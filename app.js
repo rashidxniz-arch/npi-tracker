@@ -246,7 +246,7 @@ function actionRow(x){
   return `<div class="row ${x.done?"done":""}">
     <input type="checkbox" class="check" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${x.done?"checked":""} ${FIRESTORE_READ_ONLY?"disabled":""} aria-label="Done">
     <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${esc(T(x.owner).short)}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}${!x.done&&!FIRESTORE_READ_ONLY?hrsChip(x):""}</div></label>
-    ${x.src==="team"&&SCRIPT_URL&&(x.createdBy===me||x.owner===me)?`<button class="linkbtn" type="button" data-del="${esc(x.id)}" aria-label="Remove task">Remove</button>`:"<span></span>"}
+    ${x.src==="team"?`<span class="task-tools"><select aria-label="Reassign task" data-reassign-select="${esc(x.id)}">${ownerOptions(x.owner,false)}</select><button class="linkbtn" type="button" data-reassign="${esc(x.id)}">Assign</button><button class="linkbtn" type="button" data-del="${esc(x.id)}" aria-label="Remove task">Remove</button></span>`:"<span></span>"}
   </div>`;
 }
 function hrsChip(x){ const e=effortMap()[x.id]; const h=e&&+e.hours>0?+e.hours:""; return `<button type="button" class="hrs ${h?"set":""}" data-hrs="${esc(x.id)}" data-cur="${h}" title="Estimated hours to finish">${h?h+"h":"+ hrs"}</button>`; }
@@ -589,6 +589,8 @@ document.addEventListener("click", e=>{
   const th = e.target.closest("th[data-sort]"); if(th){ const k=th.dataset.sort; sortDir = sortK===k ? -sortDir : 1; sortK=k; renderProjects(); return; }
   const d = e.target.closest("[data-del]");
   if(d){ if(d.dataset.armed){ send({op:"deleteTask", id:d.dataset.del}, "Task removed"); } else { d.dataset.armed="1"; d.textContent="Tap again"; } return; }
+  const rb=e.target.closest("[data-reassign]");
+  if(rb){ const sel=document.querySelector('[data-reassign-select="'+CSS.escape(rb.dataset.reassign)+'"]'); if(sel && sel.value) send({op:"reassignTask",id:rb.dataset.reassign,owner:sel.value},"Task reassigned"); return; }
   if(e.target.id==="moreFeed"){ feedLimit+=25; renderFeed(); }
 });
 document.addEventListener("keydown", e=>{
