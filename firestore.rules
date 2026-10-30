@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function activeUser() {
+      return signedIn()
+        && userDoc().data.active == true;
+    }
+    function admin() {
+      return activeUser() && userDoc().data.role == 'admin';
+    }
+    function engineer() {
+      return activeUser()
+        && userDoc().data.role in ['admin', 'engineer'];
+    }
+
+    // User records are provisioned by an administrator in the Firebase
+    // console. A user cannot grant themselves a role or activate an account.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || admin());
+      allow create, update, delete: if admin();
+    }
+
+    // Tracker data is available only to active, provisioned accounts.
+    match /projects/{projectId} {
+      allow read: if activeUser();
+      allow create, update, delete: if engineer();
+    }
+    match /tasks/{taskId} {
+      allow read: if activeUser();
+      allow create, update: if activeUser();
+      allow delete: if engineer();
+    }
+    match /updates/{updateId} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if admin();
+    }
+    match /meetings/{meetingId} {
+      allow read: if activeUser();
+      allow create, update, delete: if engineer();
+    }
+    match /workload/{recordId} {
+      allow read: if activeUser();
+      allow create, update: if engineer();
+      allow delete: if admin();
+    }
+    match /auditLogs/{logId} {
+      allow read: if admin();
+      allow create: if activeUser()
+        && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Deny access to every collection not explicitly listed above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
