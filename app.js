@@ -694,9 +694,8 @@ $("logout").onclick = async ()=>{ store.set("npi-code",""); if(firebaseAuth) awa
 
 /* ---------- start ---------- */
 document.body.classList.toggle("desk", desk);
-async function open(pass){
-  D = await loadTracker(pass);
-  code = pass; store.set("npi-code", pass);
+async function open(){
+  // The current tracker is Firestore-backed; the legacy encrypted JSON/passcode is no longer required.
   await loadFirestoreData();
   $("lock").hidden = true; $("app").hidden = false;
   menu(false);
@@ -717,9 +716,8 @@ $("lockForm").onsubmit = async e=>{
     currentProfile=profile;
     if(profile.active!==true) throw new Error("Your NPI Tracker account is inactive. Contact Rashid.");
     me=String(profile.name||profile.displayName||email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g,"");
-    const oldPass=$("code").value.trim();
-    btn.textContent="Opening existing tracker…";
-    await open(oldPass);
+    btn.textContent="Opening NPI Tracker…";
+    await open();
   }catch(x){
     err.hidden=false;
     err.textContent = x.code==="auth/invalid-credential" || x.code==="auth/wrong-password" || x.code==="auth/user-not-found"
@@ -734,8 +732,8 @@ $("lockForm").onsubmit = async e=>{
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadFirestoreData().then(render).catch(e=>console.warn("Background refresh failed",e)); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.9";
-const CHANGES = [\n  {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},
+const APP_VERSION = "2.10";
+const CHANGES = [\n  {v:"2.10", date:"30 Oct 2026", items:["Removed the obsolete legacy tracker passcode from sign-in","Sign-in now opens directly from the authenticated Firestore account"]},\n  {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},
   {v:"2.8", date:"30 Oct 2026", items:["Enabled Firestore-backed task creation and team assignment","Added task reassignment, completion, progress updates and effort-hour writes","Added append-only audit events for key task and progress changes"]},
   {v:"2.7", date:"30 Oct 2026", items:["Added Firestore-backed read-only dashboard validation","Loaded migrated projects, tracker actions, team tasks, meetings, status and team reference data from Firestore","Disabled editing temporarily while shared-data validation is completed"]},
   {v:"2.6", date:"30 Oct 2026", items:["Applied the new NPI Tracker electric-blue and navy brand palette","Updated PWA browser theme and added a dedicated NPI Tracker vector app icon"]},
