@@ -12,7 +12,7 @@ const fmtDate = s => { const d=dt(s); return isNaN(d) ? "" : `${DOW[d.getDay()]}
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` }
 const store = { get(k){ try{return localStorage.getItem(k)||""}catch(e){return ""} }, set(k,v){ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k) }catch(e){} } };
 
-let code = "", me = store.get("npi-me");
+let code = "", me = store.get("npi-me"), currentProfile = null;
 const firebaseConfig = window.NPI_CONFIG && window.NPI_CONFIG.firebase;
 if (firebaseConfig && window.firebase && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const firebaseAuth = window.firebase ? firebase.auth() : null;
@@ -37,7 +37,7 @@ async function loadTracker(pass){
 }
 
 /* ---------- Firestore read-only dashboard preview ---------- */
-const FIRESTORE_READ_ONLY = true;
+const FIRESTORE_READ_ONLY = false;
 async function loadFirestoreData(){
   if(!firestore || !firebaseAuth || !firebaseAuth.currentUser) throw new Error("Firebase session is not available.");
   const names=["projects","tasks","meetings","status","updates","workload","team"];
@@ -66,18 +66,46 @@ async function loadTeam(){
     try{ const c = JSON.parse(store.get("npi-team-cache")||"null"); if(c) TD = c; }catch(_){}
   }
 }
+async function auditEvent(action, entityId, details){
+  const uid=firebaseAuth.currentUser.uid;
+  await firestore.collection("auditLogs").add({actorUid:uid,actor:me,action,entityId:String(entityId),details:details||{},at:firebase.firestore.FieldValue.serverTimestamp()});
+}
 async function send(payload, okMsg){
-  if(FIRESTORE_READ_ONLY){ toast("Firestore preview is read-only. Team editing will be enabled after validation."); return false; }
-  if(!SCRIPT_URL){ toast("Team input isn't switched on yet"); return false; }
-  if(!me){ toast("Choose your name first (top right)"); menu(true); $("whoami").focus(); return false; }
+  if(!firebaseAuth || !firebaseAuth.currentUser || !currentProfile || currentProfile.active!==true){ toast("Your active Firebase session is required."); return false; }
+  if(!me || !ACTIVE_TEAM.has(me)){ toast("Your NPI team profile is not recognised."); return false; }
+  const uid=firebaseAuth.currentUser.uid, now=new Date().toISOString();
   try{
-    const r = await fetch(SCRIPT_URL, {method:"POST", body:JSON.stringify({...payload, code, me})});
-    const j = await r.json();
-    if(!j.ok){ toast(j.error==="bad_code" ? "Passcode was changed. Lock and re-enter the new one." : "Couldn't save. Please try again."); return false; }
-    TD = j; store.set("npi-team-cache", JSON.stringify(j)); teamOk = true;
-    if(okMsg) toast(okMsg);
-    render(); return true;
-  }catch(e){ toast("No connection. Please try again when you're online."); return false; }
+    if(payload.op==="addTask"){
+      const owner=String(payload.owner||""), text=String(payload.text||"").trim().slice(0,200);
+      if(!ACTIVE_TEAM.has(owner)||!text) throw new Error("Choose a team member and enter a task.");
+      const id="team-"+Date.now()+"-"+Math.random().toString(36).slice(2,8);
+      const data={id,source:"google-sheets",owner,text,tag:String(payload.tag||"").slice(0,30),urgent:!!payload.urgent,createdAt:now,createdBy:me,createdByUid:uid,updatedAt:now};
+      const batch=firestore.batch(); batch.set(firestore.collection("tasks").doc(id),data);
+      batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:"task_created",entityId:id,details:{owner,text},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
+    }else if(payload.op==="setDone"){
+      const id=String(payload.id||""), action=allActions().find(x=>x.id===id); if(!action) throw new Error("Task not found. Refresh and try again.");
+      const batch=firestore.batch(); batch.set(firestore.collection("status").doc(id),{id,done:!!payload.done,by:me,at:now,actorUid:uid},{merge:true});
+      batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:payload.done?"task_completed":"task_reopened",entityId:id,details:{owner:action.owner},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
+    }else if(payload.op==="reassignTask"){
+      const id=String(payload.id||""), owner=String(payload.owner||""), action=allActions().find(x=>x.id===id);
+      if(!ACTIVE_TEAM.has(owner)) throw new Error("Select a valid team member."); if(!action||!action.docId) throw new Error("This task cannot be reassigned from this view.");
+      const batch=firestore.batch(); batch.update(firestore.collection("tasks").doc(action.docId),{owner,updatedAt:now,updatedBy:me,updatedByUid:uid});
+      batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:"task_reassigned",entityId:id,details:{from:action.owner,to:owner},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
+    }else if(payload.op==="deleteTask"){
+      const action=allActions().find(x=>x.id===String(payload.id||"")); if(!action||!action.docId||action.source!=="team") throw new Error("Only team-created tasks can be removed.");
+      const batch=firestore.batch(); batch.delete(firestore.collection("tasks").doc(action.docId));
+      batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:"task_deleted",entityId:action.id,details:{owner:action.owner},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
+    }else if(payload.op==="setHours"){
+      const id=String(payload.id||""), hours=Number(payload.hours); if(!id||!Number.isFinite(hours)||hours<0||hours>200) throw new Error("Enter hours between 0 and 200.");
+      await firestore.collection("workload").doc(id).set({id,hours,by:me,at:now,actorUid:uid},{merge:true});
+    }else if(payload.op==="post"){
+      const text=String(payload.text||"").trim().slice(0,600); if(!text) throw new Error("Enter an update first.");
+      const id="update-"+Date.now()+"-"+Math.random().toString(36).slice(2,8), data={id,at:now,owner:me,text,project:String(payload.project||""),createdBy:me,createdByUid:uid};
+      const batch=firestore.batch(); batch.set(firestore.collection("updates").doc(id),data);
+      batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:"progress_posted",entityId:id,details:{project:data.project},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
+    }else throw new Error("Unsupported operation.");
+    await loadFirestoreData(); if(okMsg) toast(okMsg); render(); return true;
+  }catch(e){ console.error("Firestore write failed",e); toast(e.code==="permission-denied"?"Permission denied by Firestore security rules.":(e.message||"Could not save. Please try again.")); return false; }
 }
 
 /* ---------- derived view ---------- */
@@ -124,11 +152,9 @@ function render(){
   $("postProj").innerHTML = projOptions(pp);
   if(!$("sFilter").options.length) $("sFilter").innerHTML = `<option value="">All stages</option>` + STAGES.map((s,i)=>`<option value="${i}">${s}</option>`).join("");
   const b = $("banner");
-  if(FIRESTORE_READ_ONLY){ b.hidden=false; b.className="banner"; b.textContent="Firestore preview mode · Shared project and team data is loaded from Firestore. Editing is temporarily disabled while we validate the new connection."; }
-  else if(!SCRIPT_URL){ b.hidden=false; b.className="banner"; b.textContent="Adding tasks and posting updates will be switched on shortly. You can view the tracker now."; }
-  else if(!teamOk){ b.hidden=false; b.className="banner warn"; b.textContent="Couldn't reach the team list. Showing the last saved copy; tasks and ticks may be out of date."; }
+  if(!teamOk){ b.hidden=false; b.className="banner warn"; b.textContent="Couldn't reach the team list. Showing the last saved copy; tasks and ticks may be out of date."; }
   else b.hidden=true;
-  document.querySelectorAll("#actForm button,#postForm button").forEach(x=>x.disabled=FIRESTORE_READ_ONLY||!SCRIPT_URL);
+  document.querySelectorAll("#actForm button,#postForm button").forEach(x=>x.disabled=FIRESTORE_READ_ONLY);
   const acts = allActions();
   $("nProj").textContent = D.projects.length;
   const nOpen = acts.filter(a=>!a.done && (!me || a.owner===me)).length;
@@ -218,8 +244,8 @@ function renderProjects(){
 }
 function actionRow(x){
   return `<div class="row ${x.done?"done":""}">
-    <input type="checkbox" class="check" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${x.done?"checked":""} ${SCRIPT_URL?"":"disabled"} aria-label="Done">
-    <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${esc(T(x.owner).short)}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}${!x.done&&SCRIPT_URL?hrsChip(x):""}</div></label>
+    <input type="checkbox" class="check" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${x.done?"checked":""} ${FIRESTORE_READ_ONLY?"disabled":""} aria-label="Done">
+    <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${esc(T(x.owner).short)}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}${!x.done&&!FIRESTORE_READ_ONLY?hrsChip(x):""}</div></label>
     ${x.src==="team"&&SCRIPT_URL&&(x.createdBy===me||x.owner===me)?`<button class="linkbtn" type="button" data-del="${esc(x.id)}" aria-label="Remove task">Remove</button>`:"<span></span>"}
   </div>`;
 }
@@ -593,7 +619,7 @@ $("postForm").onsubmit = async e=>{
   const text=$("postText").value.trim(); if(!text){ $("postText").focus(); return; }
   if(await send({op:"post", text, project:$("postProj").value}, "Update posted")) $("postText").value="";
 };
-$("refresh").onclick = async ()=>{ menu(false); try{ if(FIRESTORE_READ_ONLY) await loadFirestoreData(); else { D = await loadTracker(code); await loadTeam(); } render(); toast("Firestore data refreshed"); }catch(e){ toast("Refresh failed: "+(e.message||"connection error")); } };
+$("refresh").onclick = async ()=>{ menu(false); try{ await loadFirestoreData(); render(); toast("Firestore data refreshed"); }catch(e){ toast("Refresh failed: "+(e.message||"connection error")); } };
 $("logout").onclick = async ()=>{ store.set("npi-code",""); if(firebaseAuth) await firebaseAuth.signOut().catch(()=>{}); location.reload(); };
 
 /* ---------- start ---------- */
@@ -618,6 +644,7 @@ $("lockForm").onsubmit = async e=>{
     const profileSnap=await firestore.collection("users").doc(credential.user.uid).get();
     if(!profileSnap.exists) throw new Error("Your account has no NPI Tracker profile. Ask Rashid to provision it.");
     const profile=profileSnap.data();
+    currentProfile=profile;
     if(profile.active!==true) throw new Error("Your NPI Tracker account is inactive. Contact Rashid.");
     me=String(profile.name||profile.displayName||email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g,"");
     const oldPass=$("code").value.trim();
@@ -629,15 +656,17 @@ $("lockForm").onsubmit = async e=>{
       ? "Email or password is incorrect."
       : x.message==="badcode" ? "The existing tracker passcode is incorrect."
       : (x.message || "Sign-in failed. Check your connection and try again.");
+    currentProfile=null;
     if(firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut().catch(()=>{});
   }
   btn.disabled=false; btn.textContent="Sign in";
 };
-document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadFirestoreData().then(render).catch(e=>console.warn("Background refresh failed",e)); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.7";
+const APP_VERSION = "2.8";
 const CHANGES = [
+  {v:"2.8", date:"30 Oct 2026", items:["Enabled Firestore-backed task creation and team assignment","Added task reassignment, completion, progress updates and effort-hour writes","Added append-only audit events for key task and progress changes"]},
   {v:"2.7", date:"30 Oct 2026", items:["Added Firestore-backed read-only dashboard validation","Loaded migrated projects, tracker actions, team tasks, meetings, status and team reference data from Firestore","Disabled editing temporarily while shared-data validation is completed"]},
   {v:"2.6", date:"30 Oct 2026", items:["Applied the new NPI Tracker electric-blue and navy brand palette","Updated PWA browser theme and added a dedicated NPI Tracker vector app icon"]},
   {v:"2.5", date:"30 Oct 2026", items:["Redesigned the mobile Summary dashboard with a clearer project overview","Added quick actions for adding tasks, posting updates and opening projects","Improved mobile KPI hierarchy, chart labels and dashboard spacing"]},
