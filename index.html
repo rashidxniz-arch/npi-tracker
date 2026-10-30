@@ -94,7 +94,7 @@ img.exz{height:40px;width:auto;display:block}
   .brand{min-width:0;flex:0 1 auto}
   .right{margin-left:auto}
 }
-@media (max-width:640px){.dropdown{position:fixed;right:12px;top:auto;margin-top:8px;width:min(290px,calc(100vw - 24px))}img.exz,.clock{display:none}.topbar .in{gap:8px;padding:6px 12px}.brand img{height:32px}.brand b{font-size:15px}.brand small{font-size:10px}.namebtn{padding:6px 9px;gap:6px}.namebtn .nm{max-width:90px;overflow:hidden;text-overflow:ellipsis}}
+@media (max-width:640px){.dropdown{position:absolute;right:0;top:calc(100% + 8px);margin:0;width:min(290px,calc(100vw - 24px));max-height:calc(100dvh - 150px);overflow-y:auto;overscroll-behavior:contain}img.exz,.clock{display:none}.topbar .in{gap:8px;padding:6px 12px}.brand img{height:32px}.brand b{font-size:15px}.brand small{font-size:10px}.namebtn{padding:6px 9px;gap:6px}.namebtn .nm{max-width:90px;overflow:hidden;text-overflow:ellipsis}}
 
 /* ---------- page ---------- */
 :root{--maxw:1240px}
