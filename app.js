@@ -578,9 +578,10 @@ async function open(pass){
   D = await loadTracker(pass);
   code = pass; store.set("npi-code", pass);
   $("lock").hidden = true; $("app").hidden = false;
+  menu(false);
   render();
   await loadTeam(); render();
-  if(!me) setTimeout(()=>{ menu(true); $("whoami").focus(); }, 300);
+  // Keep the profile menu closed on startup; open it only when the user taps the name button.
 }
 $("lockForm").onsubmit = async e=>{
   e.preventDefault();
