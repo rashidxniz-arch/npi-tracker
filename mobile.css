@@ -63,3 +63,78 @@
   footer.site{padding-bottom:12px}
 }
 @media(min-width:641px){.mobile-nav{display:none!important}}
+
+
+/* ---------- V2.5 mobile summary dashboard ---------- */
+.summary-intro{display:flex;flex-direction:column;gap:14px}
+.summary-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.summary-kicker{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--blue);font-weight:600;margin-bottom:3px}
+.summary-heading h1{font-size:26px;line-height:1.1}
+.summary-heading p{margin:5px 0 0;color:var(--ink-3);font-size:13px}
+.summary-date{display:flex;flex-direction:column;align-items:flex-end;gap:5px;white-space:nowrap}
+.summary-date>b{font-family:var(--mono);font-size:11px;color:var(--ink-2);font-weight:500}
+.summary-live{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:4px 8px;color:var(--ink-3);font:500 9px var(--mono);letter-spacing:.04em}
+.summary-live i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+.quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.quick-action{display:flex;align-items:center;gap:9px;min-width:0;min-height:58px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;text-align:left;box-shadow:var(--shadow);cursor:pointer}
+.quick-action.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.qa-icon{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:8px;background:var(--blue-soft);color:var(--navy);font-size:20px;line-height:1}
+.quick-action.primary .qa-icon{background:rgba(255,255,255,.15);color:#fff}
+.quick-action>span:last-child{display:flex;flex-direction:column;min-width:0;gap:1px}
+.quick-action b{font-size:12px;line-height:1.2;white-space:nowrap}
+.quick-action small{font-size:10px;opacity:.72;white-space:nowrap}
+.kpi-section{display:flex;flex-direction:column;gap:8px}
+.section-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.section-label b{font-family:var(--display);font-size:16px;color:var(--navy)}
+.section-label span{font-size:10px;color:var(--ink-3)}
+@media(max-width:640px){
+  .summary-intro{gap:12px}
+  .summary-heading h1{font-size:23px}
+  .summary-heading p{font-size:11px;max-width:250px}
+  .summary-date{gap:4px}
+  .summary-live{font-size:8px;padding:3px 6px}
+  .summary-date>b{font-size:10px}
+  .quick-actions{gap:6px}
+  .quick-action{min-height:60px;padding:8px 7px;gap:6px;border-radius:8px}
+  .qa-icon{width:26px;height:26px;font-size:18px;border-radius:7px}
+  .quick-action b{font-size:10px}
+  .quick-action small{font-size:9px}
+  .section-label b{font-size:15px}
+  .section-label span{font-size:9px}
+  .kpis{gap:8px}
+  .kpi{min-height:88px;padding:10px 11px;border-radius:9px;gap:3px}
+  .kpi .eyebrow{font-size:9px;letter-spacing:.04em}
+  .kpi b{font-size:25px}
+  .kpi small{font-size:10px;line-height:1.25}
+  .kpi:last-child{grid-column:1/-1;min-height:66px;display:grid;grid-template-columns:1fr auto;align-content:center;align-items:center}
+  .kpi:last-child .eyebrow,.kpi:last-child small{grid-column:1}
+  .kpi:last-child b{grid-column:2;grid-row:1/3;font-size:27px}
+  .filters{padding-top:2px;padding-bottom:5px}
+  .chip{min-height:36px;padding:6px 10px;font-size:12px}
+  .dash{gap:10px}
+  .dash .card{border-radius:10px;overflow:hidden}
+  .card-head{min-height:44px;padding:10px 12px}
+  .card-head h2{font-size:15px}
+  .card-head .eyebrow{font-size:9px}
+  .card-body{padding:11px 12px}
+  .pipe{height:126px;gap:3px;padding-top:5px}
+  .pstack{width:min(25px,72%)}
+  .pcol .n{font-size:11px}
+  .plabels{gap:2px;font-size:9px;letter-spacing:0}
+  .plabels span{font-size:0}
+  .plabels span::after{content:attr(data-short);font-size:9px}
+  .legend{gap:8px;font-size:10px}
+  .legend i{width:8px;height:8px}
+  .aitem{grid-template-columns:8px minmax(0,1fr) auto;gap:8px;padding:9px 0}
+  .aitem .t{font-size:12px}
+  .aitem .s{font-size:10px;line-height:1.3}
+  .aitem .d{font-size:10px}
+  .hbar{grid-template-columns:minmax(64px,88px) minmax(0,1fr) auto;gap:7px;font-size:11px}
+  .hbar .val{font-size:10px}
+}
+@media(max-width:370px){
+  .quick-action{flex-direction:column;align-items:flex-start;gap:4px}
+  .quick-action>span:last-child{gap:0}
+  .quick-action small{display:none}
+  .summary-date{align-items:flex-end}
+}
