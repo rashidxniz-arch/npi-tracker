@@ -1,6 +1,6 @@
 // Offline support: app shell cached, tracker data network-first, Google script never cached.
-const CACHE = "npi-v15"; // bump on every release (matches APP_VERSION in app.js)
-const SHELL = ["./", "index.html", "app.js", "config.js", "mobile.css", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png", "icons/npi-logo-mark.png", "icons/npi-logo-full.png", "icons/npi-tracker-app.svg"];
+const CACHE = "npi-v16"; // bump on every release (matches APP_VERSION in app.js)
+const SHELL = ["./", "index.html", "latest.html", "app.js", "config.js", "mobile.css", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png", "icons/npi-logo-mark.png", "icons/npi-logo-full.png", "icons/npi-tracker-app.svg"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
