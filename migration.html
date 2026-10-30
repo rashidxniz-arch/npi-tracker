@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NPI Tracker · Admin Data Migration</title>
+<style>
+:root{font-family:Arial,sans-serif;color:#102b5c;background:#eef5ff}*{box-sizing:border-box}body{margin:0;padding:28px 16px}.card{max-width:760px;margin:24px auto;background:white;border:1px solid #d6e4f5;border-top:5px solid #09265d;border-radius:12px;padding:26px;box-shadow:0 8px 28px #09265d12}h1{margin:0 0 8px;font-size:24px}p{line-height:1.5;color:#526781}.warning{background:#fff7e5;border:1px solid #f4d58b;border-radius:8px;padding:12px;color:#714d00}.success{background:#eaf8ef;border:1px solid #b8e0c5;border-radius:8px;padding:12px;color:#14532d}.field{display:block;width:100%;padding:12px;margin:7px 0 14px;border:1px solid #cbd9ea;border-radius:7px;font-size:15px}.btn{border:0;border-radius:7px;padding:12px 18px;background:#09265d;color:white;font-weight:700;cursor:pointer;margin:5px 5px 5px 0}.btn.secondary{background:#eaf3ff;color:#09265d}.btn:disabled{opacity:.5;cursor:not-allowed}label{font-weight:700;font-size:13px}#status{white-space:pre-wrap;margin-top:16px;line-height:1.55}.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:15px 0}.count{background:#f3f7fd;padding:12px;border-radius:8px}.count b{display:block;font-size:23px;color:#0878f9}.small{font-size:12px;color:#60758d}hr{border:0;border-top:1px solid #e1eaf5;margin:22px 0}
+</style>
+</head>
+<body>
+<main class="card">
+<h1>NPI Tracker — Data Migration</h1>
+<p>Administrator-only utility to copy the current encrypted tracker and Google Sheets team data into Firestore. The existing dashboard is not modified by this page.</p>
+<div class="warning"><b>Important:</b> First back up your Google Sheet and keep the current tracker passcode. Preview does not write anything. Import only after reviewing the counts. Existing Firestore documents with matching IDs will be overwritten.</div>
+<hr>
+<section>
+<h2>1. Verify administrator</h2>
+<label for="email">Firebase email</label><input class="field" id="email" type="email" autocomplete="username" value="rashid@exzone.com.my">
+<label for="password">Firebase password</label><input class="field" id="password" type="password" autocomplete="current-password">
+<button class="btn" id="login">Sign in and verify admin</button>
+<div id="authStatus" class="small">Not signed in.</div>
+</section>
+<hr>
+<section>
+<h2>2. Read legacy data</h2>
+<label for="passcode">Existing NPI Tracker team passcode</label><input class="field" id="passcode" type="password" autocomplete="off">
+<button class="btn secondary" id="preview" disabled>Read data & preview counts</button>
+<div id="previewCounts"></div>
+</section>
+<hr>
+<section>
+<h2>3. Import into Firestore</h2>
+<p>Import writes projects, tracker actions, team tasks, status history, progress updates, meetings, effort records and team reference data. It does not create Firebase login accounts.</p>
+<button class="btn" id="import" disabled>Import reviewed data</button>
+<div id="status" role="status"></div>
+</section>
+<p class="small">Use only from the official NPI Tracker GitHub Pages domain. Do not share passwords or passcodes. Close this page after migration.</p>
+</main>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="./config.js"></script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const cfg=window.NPI_CONFIG&&window.NPI_CONFIG.firebase;
+if(!cfg) throw new Error("Firebase configuration missing.");
+if(!firebase.apps.length) firebase.initializeApp(cfg);
+const auth=firebase.auth(), db=firebase.firestore();
+let adminUser=null, payload=null;
+const say=(id,msg)=>$(id).textContent=msg;
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function decrypt(enc,pass){
+ const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pass),"PBKDF2",false,["deriveKey"]);
+ const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(enc.salt),iterations:enc.iter,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]);
+ const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64(enc.iv)},key,b64(enc.ct));
+ return JSON.parse(new TextDecoder().decode(plain));
+}
+async function getLegacy(pass){
+ const res=await fetch("./data/tracker.enc.json?migrate="+Date.now(),{cache:"no-store"});
+ if(!res.ok) throw new Error("Could not download encrypted tracker file.");
+ let tracker;
+ try{tracker=await decrypt(await res.json(),pass)}catch(e){throw new Error("Tracker passcode is incorrect, or encrypted file cannot be decrypted.")}
+ let team={tasks:[],status:[],updates:[],effort:[]};
+ const url=window.NPI_CONFIG.scriptUrl;
+ if(url){
+  const tr=await fetch(url+"?code="+encodeURIComponent(pass));
+  if(!tr.ok) throw new Error("Could not reach the Google Sheets backend.");
+  team=await tr.json();
+  if(!team.ok) throw new Error("Google Sheets rejected the tracker passcode. Check that the Apps Script TEAM_CODE matches.");
+ }
+ return {tracker,team};
+}
+function rows(arr,prefix){return (Array.isArray(arr)?arr:[]).map((x,i)=>({id:String(x.id||prefix+"-"+(i+1)),data:x}));}
+function safeId(id){return String(id).replaceAll("/","_").slice(0,140)||("row-"+Math.random().toString(36).slice(2))}
+function makePlan(p){
+ const d=p.tracker,t=p.team,u=adminUser.uid;
+ const projects=rows(d.projects,"project");
+ const actions=rows(d.actions,"action").map(x=>({id:"legacy-"+x.id,data:{...x.data,source:"tracker"}}));
+ const tasks=rows(t.tasks,"task").map(x=>({id:"sheet-"+x.id,data:{...x.data,source:"google-sheets"}}));
+ const meetings=rows(d.meetings,"meeting");
+ const updates=rows(t.updates,"update").map(x=>({id:"sheet-"+x.id,data:{...x.data,legacyOwner:x.data.owner||"",createdBy:u,source:"google-sheets"}}));
+ const status=rows(t.status,"status");
+ const effort=rows(t.effort,"effort");
+ const team=Object.entries(d.team||{}).map(([id,data])=>({id,data:{...data,key:id}}));
+ return {projects,actions,tasks,meetings,updates,status,effort,team};
+}
+function renderCounts(plan){
+ const names={projects:"Projects",actions:"Tracker actions",tasks:"Google Sheet tasks",meetings:"Meetings",updates:"Progress updates",status:"Status records",effort:"Effort records",team:"Team profiles"};
+ $("previewCounts").innerHTML='<div class="counts">'+Object.entries(names).map(([k,n])=>'<div class="count"><b>'+plan[k].length+'</b>'+n+'</div>').join("")+'</div>';
+}
+$("login").onclick=async()=>{
+ $("login").disabled=true;say("authStatus","Checking Firebase account…");
+ try{
+  const c=await auth.signInWithEmailAndPassword($("email").value.trim(),$("password").value);
+  const snap=await db.collection("users").doc(c.user.uid).get();
+  if(!snap.exists||snap.data().active!==true||snap.data().role!=="admin") throw new Error("This account does not have an active admin profile in Firestore.");
+  adminUser=c.user;say("authStatus","Verified administrator: "+c.user.email);
+  $("preview").disabled=false;
+ }catch(e){adminUser=null;say("authStatus",e.message||"Sign-in failed.");}
+ $("login").disabled=false;
+};
+$("preview").onclick=async()=>{
+ $("preview").disabled=true;say("status","Reading and decrypting legacy data…");
+ try{
+  if(!adminUser) throw new Error("Sign in as an active administrator first.");
+  const p=await getLegacy($("passcode").value);
+  payload=makePlan(p);renderCounts(payload);
+  say("status","Preview ready. No Firestore data has been changed. Check the counts above before importing.");
+  $("import").disabled=false;
+ }catch(e){payload=null;$("import").disabled=true;say("status",e.message||"Preview failed.");}
+ $("preview").disabled=false;
+};
+async function writeCollection(name,items,transform){
+ const list=items.map(x=>({id:safeId(x.id),data:transform?transform(x.data):x.data}));
+ for(let i=0;i<list.length;i+=400){
+  const batch=db.batch();
+  list.slice(i,i+400).forEach(x=>batch.set(db.collection(name).doc(x.id),x.data,{merge:true}));
+  await batch.commit();
+ }
+}
+$("import").onclick=async()=>{
+ if(!adminUser||!payload)return;
+ if(!confirm("Import these records into Firestore now? Matching document IDs will be overwritten."))return;
+ $("import").disabled=true;$("preview").disabled=true;say("status","Import started…");
+ try{
+  await writeCollection("projects",payload.projects);
+  await writeCollection("tasks",payload.actions.concat(payload.tasks));
+  await writeCollection("meetings",payload.meetings);
+  await writeCollection("updates",payload.updates);
+  await writeCollection("status",payload.status);
+  await writeCollection("workload",payload.effort);
+  await writeCollection("team",payload.team);
+  const counts=Object.fromEntries(Object.entries(payload).map(([k,v])=>[k,v.length]));
+  await db.collection("migrationRuns").doc("legacy-v1").set({completedAt:firebase.firestore.FieldValue.serverTimestamp(),completedBy:adminUser.uid,counts,source:"encrypted tracker + Google Sheets",version:1});
+  say("status","IMPORT COMPLETE. Imported record counts:\n"+Object.entries(counts).map(([k,v])=>k+": "+v).join("\n")+"\n\nThe old dashboard and Google Sheets backend have NOT been disabled. Verify records before switching the app.");
+ }catch(e){say("status","IMPORT FAILED: "+(e.message||e)+"\nSome batches may already have completed. You can safely rerun this import because it uses stable document IDs.");}
+ $("import").disabled=false;$("preview").disabled=false;
+};
+</script>
+</body>
+</html>
