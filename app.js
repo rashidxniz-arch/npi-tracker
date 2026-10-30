@@ -733,7 +733,9 @@ document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) lo
 
 /* ---------- version, updates, install ---------- */
 const APP_VERSION = "2.10";
-const CHANGES = [\n  {v:"2.10", date:"30 Oct 2026", items:["Removed the obsolete legacy tracker passcode from sign-in","Sign-in now opens directly from the authenticated Firestore account"]},\n  {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},
+const CHANGES = [
+  {v:"2.10", date:"30 Oct 2026", items:["Removed the obsolete legacy tracker passcode from sign-in","Sign-in now opens directly from the authenticated Firestore account"]},
+  {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},
   {v:"2.8", date:"30 Oct 2026", items:["Enabled Firestore-backed task creation and team assignment","Added task reassignment, completion, progress updates and effort-hour writes","Added append-only audit events for key task and progress changes"]},
   {v:"2.7", date:"30 Oct 2026", items:["Added Firestore-backed read-only dashboard validation","Loaded migrated projects, tracker actions, team tasks, meetings, status and team reference data from Firestore","Disabled editing temporarily while shared-data validation is completed"]},
   {v:"2.6", date:"30 Oct 2026", items:["Applied the new NPI Tracker electric-blue and navy brand palette","Updated PWA browser theme and added a dedicated NPI Tracker vector app icon"]},
