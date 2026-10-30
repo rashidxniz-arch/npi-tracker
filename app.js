@@ -136,7 +136,8 @@ function renderKpis(){
   const m = D.meetings.filter(x=>(filter==="all"||(x.who||[]).includes(filter)) && x.date>=t && x.date<=wk).length
           + p.filter(x=>x.due && x.due>=t && x.due<=wk).length;
   const late = p.filter(x=>x.asap || (x.due && x.due<t)).length;
-  $("sumSub").textContent = filter==="all" ? "Where every NPI project stands today." : `Showing ${T(filter).name}'s projects and actions.`;
+  $("sumSub").textContent = filter==="all" ? "A clear view of project health, priorities and team progress." : `Showing ${T(filter).name}'s projects and actions.`;
+  if($("summaryDate")) $("summaryDate").textContent = new Intl.DateTimeFormat("en-MY",{weekday:"short",day:"numeric",month:"short"}).format(new Date());
   $("kpis").innerHTML = `
     <button class="kpi" type="button" data-kpi="all"><span class="eyebrow">Active projects</span><b>${p.length}</b><small>${STAGES.map((s,i)=>p.filter(x=>x.stage===i).length).join(" · ")} by stage</small></button>
     <button class="kpi bad" type="button" data-kpi="bad"><span class="eyebrow">At risk</span><b>${p.filter(x=>x.health==="bad").length}</b><small>${late} overdue / ASAP</small></button>
@@ -248,7 +249,7 @@ function renderDash(){
     const tip = `<b>${c.s}: ${c.p.length} project${c.p.length===1?"":"s"}</b>` + (c.p.length ? "<br>"+["bad","warn","ok"].filter(h=>c[h].length).map(h=>`${HL[h]}: ${c[h].length}`).join(" · ") + "<br>" + c.p.slice(0,6).map(x=>esc(x.name)).join("<br>") + (c.p.length>6?`<br>+${c.p.length-6} more`:"") + "<br><i>Click to open list</i>" : "");
     return `<button type="button" class="pcol" data-stage="${c.i}" data-tip="${esc(tip)}" aria-label="${c.s}: ${c.p.length} projects"><span class="n">${c.p.length||""}</span><div class="pstack">${seg("ok")}${seg("warn")}${seg("bad")}</div></button>`;
   }).join("");
-  $("plabels").innerHTML = STAGES.map(s=>`<span>${s}</span>`).join("");
+  $("plabels").innerHTML = STAGES.map((s,i)=>`<span data-short="${["RFQ","DFM","TOOL","TRIAL","BUILD","REL"][i]}">${s}</span>`).join("");
 
   const t = todayISO(), att = [];
   projs.forEach(p=>{
@@ -527,7 +528,7 @@ document.addEventListener("click", e=>{
   if(hb){ e.preventDefault(); const cur=hb.dataset.cur||""; const v=prompt("Estimated hours still needed to finish this action?", cur); if(v!==null){ const h=parseFloat(v); if(isNaN(h)||h<0||h>200){ toast("Enter hours between 0 and 200"); } else send({op:"setHours", id:hb.dataset.hrs, hours:h}, "Hours saved"); } return; }
   const pid = e.target.closest("[data-pid]");
   if(pid && !e.target.closest(".check,label,[data-del]")){ e.preventDefault(); openProject(pid.dataset.pid); return; }
-  const g = e.target.closest("[data-go]"); if(g){ go(g.dataset.go); return; }
+  const g = e.target.closest("[data-go]"); if(g){ go(g.dataset.go); if(g.dataset.focus) setTimeout(()=>$(g.dataset.focus)?.focus(),100); return; }
   const kp = e.target.closest("[data-kpi]");
   if(kp){ const k=kp.dataset.kpi; if(k==="actions"||k==="calendar"){ aShow="open"; go(k); } else { hF = k==="all"?"":k; sF=""; $("hFilter").value=hF; $("sFilter").value=""; renderProjects(); go("projects"); } return; }
   const st = e.target.closest("[data-stage]");
@@ -594,8 +595,9 @@ if(code){ open(code).catch(()=>{ store.set("npi-code",""); }); }
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.4";
+const APP_VERSION = "2.5";
 const CHANGES = [
+  {v:"2.5", date:"30 Oct 2026", items:["Redesigned the mobile Summary dashboard with a clearer project overview","Added quick actions for adding tasks, posting updates and opening projects","Improved mobile KPI hierarchy, chart labels and dashboard spacing"]},
   {v:"2.4", date:"30 Oct 2026", items:["Fixed the iPhone profile dropdown so it opens below the name button","Profile menu now stays closed when the app starts"]},
   {v:"2.3", date:"30 Oct 2026", items:["Mobile-first bottom navigation for Android and iPhone","Improved touch targets, compact project cards and phone-safe spacing","Mobile navigation stays in sync with the current page"]},
   {v:"2.2", date:"8 Oct 2026", items:["New Workload page: evidence-based assessment (Normal / High / Potential overload / Overloaded / Critical) with confidence level","Overload is judged on effort, issue complexity, concurrent projects and customers, escalations and due dates — not on action count","Tap a person (Workload page or Summary) for their workload evidence and current major activities","Each project shows its issue complexity and the activities needed to close it, from grouped email threads","Add estimated hours to any open action with “+ hrs”"]},
