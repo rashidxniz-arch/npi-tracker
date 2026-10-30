@@ -36,8 +36,25 @@ async function loadTracker(pass){
   try { return await decrypt(enc, pass); } catch(e){ throw new Error("badcode"); }
 }
 
-/* ---------- team data (Google Sheet via Apps Script) ---------- */
+/* ---------- Firestore read-only dashboard preview ---------- */
+const FIRESTORE_READ_ONLY = true;
+async function loadFirestoreData(){
+  if(!firestore || !firebaseAuth || !firebaseAuth.currentUser) throw new Error("Firebase session is not available.");
+  const names=["projects","tasks","meetings","status","updates","workload","team"];
+  const snaps=await Promise.all(names.map(n=>firestore.collection(n).get()));
+  const data={}; names.forEach((n,i)=>data[n]=snaps[i].docs.map(doc=>({docId:doc.id,...doc.data()})));
+  const projects=data.projects.map(x=>({...x,id:x.id||x.docId}));
+  const actions=data.tasks.filter(x=>x.source==="tracker").map(x=>({...x,id:x.id||x.docId}));
+  const teamTasks=data.tasks.filter(x=>x.source==="google-sheets").map(x=>({...x,id:x.id||x.docId}));
+  const team={};
+  data.team.forEach(x=>{const k=String(x.key||x.docId).toLowerCase();team[k]={...x,...(x.key?{}:{key:k})};});
+  D={projects,actions,meetings:data.meetings.map(x=>({...x,id:x.id||x.docId})),team,lastSync:"",coverage:null};
+  TD={ok:true,tasks:teamTasks,status:data.status,updates:data.updates,effort:data.workload};
+  teamOk=true;
+  return {projects:projects.length,actions:actions.length,teamTasks:teamTasks.length,meetings:D.meetings.length,status:TD.status.length,updates:TD.updates.length,team:data.team.length};
+}
 async function loadTeam(){
+  if(FIRESTORE_READ_ONLY){ await loadFirestoreData(); return; }
   if(!SCRIPT_URL) return;
   try{
     const r = await fetch(SCRIPT_URL+"?code="+encodeURIComponent(code));
@@ -50,6 +67,7 @@ async function loadTeam(){
   }
 }
 async function send(payload, okMsg){
+  if(FIRESTORE_READ_ONLY){ toast("Firestore preview is read-only. Team editing will be enabled after validation."); return false; }
   if(!SCRIPT_URL){ toast("Team input isn't switched on yet"); return false; }
   if(!me){ toast("Choose your name first (top right)"); menu(true); $("whoami").focus(); return false; }
   try{
@@ -106,10 +124,11 @@ function render(){
   $("postProj").innerHTML = projOptions(pp);
   if(!$("sFilter").options.length) $("sFilter").innerHTML = `<option value="">All stages</option>` + STAGES.map((s,i)=>`<option value="${i}">${s}</option>`).join("");
   const b = $("banner");
-  if(!SCRIPT_URL){ b.hidden=false; b.className="banner"; b.textContent="Adding tasks and posting updates will be switched on shortly. You can view the tracker now."; }
+  if(FIRESTORE_READ_ONLY){ b.hidden=false; b.className="banner"; b.textContent="Firestore preview mode · Shared project and team data is loaded from Firestore. Editing is temporarily disabled while we validate the new connection."; }
+  else if(!SCRIPT_URL){ b.hidden=false; b.className="banner"; b.textContent="Adding tasks and posting updates will be switched on shortly. You can view the tracker now."; }
   else if(!teamOk){ b.hidden=false; b.className="banner warn"; b.textContent="Couldn't reach the team list. Showing the last saved copy; tasks and ticks may be out of date."; }
   else b.hidden=true;
-  document.querySelectorAll("#actForm button,#postForm button").forEach(x=>x.disabled=!SCRIPT_URL);
+  document.querySelectorAll("#actForm button,#postForm button").forEach(x=>x.disabled=FIRESTORE_READ_ONLY||!SCRIPT_URL);
   const acts = allActions();
   $("nProj").textContent = D.projects.length;
   const nOpen = acts.filter(a=>!a.done && (!me || a.owner===me)).length;
@@ -574,19 +593,19 @@ $("postForm").onsubmit = async e=>{
   const text=$("postText").value.trim(); if(!text){ $("postText").focus(); return; }
   if(await send({op:"post", text, project:$("postProj").value}, "Update posted")) $("postText").value="";
 };
-$("refresh").onclick = async ()=>{ menu(false); try{ D = await loadTracker(code); }catch(e){} await loadTeam(); render(); toast("Up to date"); };
-$("logout").onclick = ()=>{ store.set("npi-code",""); location.reload(); };
+$("refresh").onclick = async ()=>{ menu(false); try{ if(FIRESTORE_READ_ONLY) await loadFirestoreData(); else { D = await loadTracker(code); await loadTeam(); } render(); toast("Firestore data refreshed"); }catch(e){ toast("Refresh failed: "+(e.message||"connection error")); } };
+$("logout").onclick = async ()=>{ store.set("npi-code",""); if(firebaseAuth) await firebaseAuth.signOut().catch(()=>{}); location.reload(); };
 
 /* ---------- start ---------- */
 document.body.classList.toggle("desk", desk);
 async function open(pass){
   D = await loadTracker(pass);
   code = pass; store.set("npi-code", pass);
+  await loadFirestoreData();
   $("lock").hidden = true; $("app").hidden = false;
   menu(false);
   render();
-  await loadTeam(); render();
-  // Keep the profile menu closed on startup; open it only when the user taps the name button.
+  // Firestore is the dashboard read source in this validation release; writes remain disabled.
 }
 $("lockForm").onsubmit = async e=>{
   e.preventDefault();
