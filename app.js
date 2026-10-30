@@ -75,7 +75,7 @@ async function loadFirestoreData(){
     };
     const isoDate = raw => {
       const v=String(raw||"");
-      const m=v.match(/(\\d{1,2})\\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+(2026)/i);
+      const m=v.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(2026)/i);
       if(m){const months=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];return "2026-"+String(months.indexOf(m[2].toLowerCase())+1).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0");}
       return "";
     };
