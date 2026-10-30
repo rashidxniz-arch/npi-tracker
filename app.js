@@ -636,8 +636,9 @@ $("lockForm").onsubmit = async e=>{
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadTeam().then(render); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.6";
+const APP_VERSION = "2.7";
 const CHANGES = [
+  {v:"2.7", date:"30 Oct 2026", items:["Added Firestore-backed read-only dashboard validation","Loaded migrated projects, tracker actions, team tasks, meetings, status and team reference data from Firestore","Disabled editing temporarily while shared-data validation is completed"]},
   {v:"2.6", date:"30 Oct 2026", items:["Applied the new NPI Tracker electric-blue and navy brand palette","Updated PWA browser theme and added a dedicated NPI Tracker vector app icon"]},
   {v:"2.5", date:"30 Oct 2026", items:["Redesigned the mobile Summary dashboard with a clearer project overview","Added quick actions for adding tasks, posting updates and opening projects","Improved mobile KPI hierarchy, chart labels and dashboard spacing"]},
   {v:"2.4", date:"30 Oct 2026", items:["Fixed the iPhone profile dropdown so it opens below the name button","Profile menu now stays closed when the app starts"]},
