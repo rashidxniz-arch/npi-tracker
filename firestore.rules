@@ -28,7 +28,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owner','updatedAt','updatedBy','updatedByUid'])
         && teamKey(request.resource.data.owner)
         && request.resource.data.updatedByUid == request.auth.uid;
-      allow delete: if activeUser() && resource.data.source == 'google-sheets';
+      allow delete: if admin() || (activeUser() && resource.data.source == 'google-sheets');
     }
     match /status/{id} {
       allow read: if activeUser();
