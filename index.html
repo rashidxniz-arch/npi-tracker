@@ -381,8 +381,18 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     <!-- SUMMARY -->
     <section id="v-summary" data-v="summary">
       <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="pagehead"><div><h1>Summary</h1><p id="sumSub">Where every NPI project stands today.</p></div></div>
-        <div class="kpis" id="kpis"></div>
+        <div class="summary-intro">
+          <div class="summary-heading">
+            <div><span class="summary-kicker">EXZONE · NEW GEN NPI</span><h1>Project overview</h1><p id="sumSub">Where every NPI project stands today.</p></div>
+            <div class="summary-date"><span class="summary-live"><i></i> TEAM OVERVIEW</span><b id="summaryDate">—</b></div>
+          </div>
+          <div class="quick-actions" aria-label="Quick actions">
+            <button type="button" class="quick-action primary" data-go="actions" data-focus="actText"><span class="qa-icon">＋</span><span><b>Add action</b><small>Assign a task</small></span></button>
+            <button type="button" class="quick-action" data-go="updates" data-focus="postText"><span class="qa-icon">↗</span><span><b>Post update</b><small>Share progress</small></span></button>
+            <button type="button" class="quick-action" data-go="projects"><span class="qa-icon">▤</span><span><b>Projects</b><small>Open register</small></span></button>
+          </div>
+        </div>
+        <div class="kpi-section"><div class="section-label"><b>At a glance</b><span>Tap a tile to explore</span></div><div class="kpis" id="kpis"></div></div>
         <div class="filters" role="group" aria-label="Filter by team member" data-filters></div>
         <div class="dash">
           <div class="card wide">
