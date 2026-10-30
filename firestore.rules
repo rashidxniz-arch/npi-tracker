@@ -2,70 +2,77 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-    function activeUser() {
-      return signedIn() && userDoc().data.active == true;
-    }
-    function admin() {
-      return activeUser() && userDoc().data.role == 'admin';
-    }
-    function engineer() {
-      return activeUser() && userDoc().data.role in ['admin', 'engineer'];
-    }
-    function canManageTasks() {
-      return activeUser() && userDoc().data.role in ['admin', 'engineer', 'member'];
-    }
-
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function activeUser() { return signedIn() && userDoc().data.active == true; }
+    function admin() { return activeUser() && userDoc().data.role == 'admin'; }
+    function engineer() { return activeUser() && userDoc().data.role in ['admin','engineer']; }
+    function teamKey(k) { return k in ['rashid','fadzmi','liyana','yusri','zul','fakrul','wajdi','shamsuri']; }
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || admin());
       allow create, update, delete: if admin();
     }
-    match /projects/{projectId} {
+    match /projects/{id} {
       allow read: if activeUser();
       allow create, update, delete: if engineer();
     }
-    match /tasks/{taskId} {
+    match /tasks/{id} {
       allow read: if activeUser();
-      allow create, update: if canManageTasks();
-      allow delete: if engineer();
+      allow create: if activeUser()
+        && request.resource.data.source == 'google-sheets'
+        && request.resource.data.createdByUid == request.auth.uid
+        && teamKey(request.resource.data.owner)
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 200;
+      allow update: if activeUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owner','updatedAt','updatedBy','updatedByUid'])
+        && teamKey(request.resource.data.owner)
+        && request.resource.data.updatedByUid == request.auth.uid;
+      allow delete: if activeUser() && resource.data.source == 'google-sheets';
     }
-    match /status/{statusId} {
+    match /status/{id} {
       allow read: if activeUser();
-      allow create, update: if canManageTasks();
-      allow delete: if engineer();
+      allow create, update: if activeUser()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.id == id
+        && request.resource.data.done is bool
+        && teamKey(request.resource.data.by);
+      allow delete: if false;
     }
-    match /updates/{updateId} {
+    match /updates/{id} {
       allow read: if activeUser();
-      allow create: if canManageTasks()
-        && request.resource.data.createdBy == request.auth.uid;
+      allow create: if activeUser()
+        && request.resource.data.createdByUid == request.auth.uid
+        && teamKey(request.resource.data.owner)
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 600;
       allow update, delete: if admin();
     }
-    match /meetings/{meetingId} {
+    match /meetings/{id} {
       allow read: if activeUser();
       allow create, update, delete: if engineer();
     }
-    match /workload/{recordId} {
+    match /workload/{id} {
       allow read: if activeUser();
-      allow create, update: if engineer();
+      allow create, update: if activeUser()
+        && request.resource.data.actorUid == request.auth.uid
+        && teamKey(request.resource.data.by);
       allow delete: if admin();
     }
-    match /team/{memberId} {
+    match /team/{id} {
       allow read: if activeUser();
       allow create, update, delete: if admin();
     }
-    match /migrationRuns/{runId} {
-      allow read, write: if admin();
-    }
-    match /auditLogs/{logId} {
+    match /migrationRuns/{id} { allow read, write: if admin(); }
+    match /auditLogs/{id} {
       allow read: if admin();
       allow create: if activeUser()
-        && request.resource.data.actorUid == request.auth.uid;
+        && request.resource.data.actorUid == request.auth.uid
+        && teamKey(request.resource.data.actor)
+        && request.resource.data.action is string;
       allow update, delete: if false;
     }
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
