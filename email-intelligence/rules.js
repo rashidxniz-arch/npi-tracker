@@ -76,7 +76,7 @@
   function removeNegatedRiskPhrases(text) {
     // Remove only local, explicit negations; this is deliberately conservative.
     return text
-      .replace(/\b(?:no|without|not|never|isn't|is not|hasn't|has not)\s+(?:any\s+)?(?:delay|delays|delayed|shortage|shortages|block|blocked|slippage|concern|risk)\b/gi, " ")
+      .replace(/\b(?:no|without|not|never|isn\x27t|is not|hasn\x27t|has not)\s+(?:(?:any|material|component|parts?)\s+)*(?:delay|delays|delayed|shortage|shortages|block|blocked|slippage|concern|risk)\b/gi, " ")
       .replace(/\bdelay\s+(?:has been\s+)?(?:avoided|resolved|cleared)\b/gi, " ")
       .replace(/\b(?:can|will)\s+proceed\s+without\s+delay\b/gi, " ");
   }
@@ -119,14 +119,14 @@
   }
 
   function extractOwner(text) {
-    var patterns = [
-      /\b(?:owner|assigned\s+to)\s*[:=-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
-      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+to\s+(?:please\s+)?(?:arrange|confirm|provide|complete|follow\s+up)\b/
-    ];
-    for (var i = 0; i < patterns.length; i++) {
-      var match = clean(text).match(patterns[i]);
-      if (match) return { ownerCandidate: match[1], evidenceStatus: "Rule-derived" };
+    var source = clean(text);
+    var labelled = source.match(/\b(?:owner|assigned\s+to)\s*[:=-]\s*([A-Za-z][A-Za-z'-]{1,30}(?:\s+[A-Za-z][A-Za-z'-]{1,30}){0,2})/i);
+    if (labelled) {
+      var candidate = labelled[1].trim().replace(/[.,;:]+$/, "");
+      return { ownerCandidate: candidate, evidenceStatus: "Rule-derived" };
     }
+    var assigned = source.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+to\s+(?:please\s+)?(?:arrange|confirm|provide|complete|follow\s+up)\b/);
+    if (assigned) return { ownerCandidate: assigned[1], evidenceStatus: "Rule-derived" };
     return { ownerCandidate: null, evidenceStatus: "Not identified" };
   }
 
