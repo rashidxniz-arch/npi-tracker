@@ -141,7 +141,7 @@
       var raw = m[1].replace(/,/g, ""), amount = Number(raw);
       if (m[2]) amount *= 1000;
       var unit = m[3].toLowerCase();
-      else if (/^pc|^piece/.test(unit)) unit = "pcs";
+      if (/^pc|^piece/.test(unit)) unit = "pcs";
       else if (/^device/.test(unit)) unit = "devices";
       else if (/^set/.test(unit)) unit = "sets";
       else unit = "units";
