@@ -156,13 +156,21 @@
       /\b(?:first|second|third|fourth|last)\s+week\s+of\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/gi,
       /\b(?:early|mid|late)\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+(?:20\d{2})?\b/gi,
       /\b(?:next|this)\s+(?:week|month|quarter|Monday|Tuesday|Wednesday|Thursday|Friday)\b/gi,
-      /\b(?:over|within)\s+an?\s+estimated\s+\d+\s*[-–]\s*\d+\s+months?\b/gi
+      /\b(?:over|within)\s+an?\s+estimated\s+\d+\s*[-–]\s*\d+\s+months?(?:\s+period)?\b/gi
     ], found = [];
     patterns.forEach(function (re) {
       var m;
-      while ((m = re.exec(source)) !== null) if (found.indexOf(m[0]) < 0) found.push(m[0]);
+      while ((m = re.exec(source)) !== null) {
+        var value = m[0].trim();
+        if (found.indexOf(value) < 0) found.push(value);
+      }
     });
-    return found;
+    // Keep the longest phrase when a shorter match is contained in a fuller phrase.
+    return found.filter(function (value) {
+      return !found.some(function (other) {
+        return other.length > value.length && other.toLowerCase().indexOf(value.toLowerCase()) === 0;
+      });
+    });
   }
 
   function detectTechnicalIssue(text) {
