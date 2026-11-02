@@ -1,0 +1,72 @@
+[
+  {
+    "caseId": "EGC-001",
+    "description": "Bare PCB delay creates material risk",
+    "expectedProjectId": "ri-egc-pcba",
+    "expectedCategory": "Material",
+    "expectedRisk": "High",
+    "expectedAction": true,
+    "email": {
+      "subject": "EGC – Bare PCB delivery delayed",
+      "senderEmail": "buyer@supplier.example",
+      "receivedAt": "2026-11-02T09:00:00+08:00",
+      "body": "The SMT components have been received except for the bare PCBs. Bare PCB delivery is delayed and the pilot run cannot proceed until receipt. Please confirm the revised delivery date."
+    }
+  },
+  {
+    "caseId": "EGC-002",
+    "description": "Customer purchase order received",
+    "expectedProjectId": "ri-egc-pcba",
+    "expectedCategory": "Customer",
+    "expectedRisk": "None",
+    "expectedAction": false,
+    "email": {
+      "subject": "Project EGC update – PO received",
+      "senderEmail": "customer@example.com",
+      "receivedAt": "2026-10-28T10:00:00+08:00",
+      "body": "Customer PO received on 17 September. Please note this is a progress update for Eradico Gate Connect."
+    }
+  },
+  {
+    "caseId": "EGC-003",
+    "description": "Internal pilot run action",
+    "expectedProjectId": "ri-egc-pcba",
+    "expectedCategory": "Production",
+    "expectedRisk": "Medium",
+    "expectedAction": true,
+    "email": {
+      "subject": "EGC pilot run planning",
+      "senderEmail": "rashid@exzone.com.my",
+      "receivedAt": "2026-10-29T11:00:00+08:00",
+      "body": "Pilot run is pending. Please arrange the build plan and confirm the target date 2026-11-05."
+    }
+  },
+  {
+    "caseId": "EGC-004",
+    "description": "Ambiguous project must not be mapped",
+    "expectedProjectId": null,
+    "expectedCategory": "General",
+    "expectedRisk": "None",
+    "expectedAction": false,
+    "email": {
+      "subject": "Delivery status update",
+      "senderEmail": "supplier@example.com",
+      "receivedAt": "2026-10-30T08:00:00+08:00",
+      "body": "Please confirm delivery status."
+    }
+  },
+  {
+    "caseId": "EGC-005",
+    "description": "Explicit project code in body",
+    "expectedProjectId": "ri-egc-pcba",
+    "expectedCategory": "Tooling",
+    "expectedRisk": "None",
+    "expectedAction": false,
+    "email": {
+      "subject": "Trial preparation",
+      "senderEmail": "engineer@exzone.com.my",
+      "receivedAt": "2026-10-31T14:00:00+08:00",
+      "body": "For EGC, tooling preparation is completed and ready for trial."
+    }
+  }
+]
