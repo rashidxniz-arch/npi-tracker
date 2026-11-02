@@ -45,7 +45,7 @@
     "caseId": "EGC-004",
     "description": "Ambiguous project must not be mapped",
     "expectedProjectId": null,
-    "expectedCategory": "General",
+    "expectedCategory": "Supplier",
     "expectedRisk": "None",
     "expectedAction": true,
     "email": {
