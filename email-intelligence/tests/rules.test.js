@@ -38,6 +38,34 @@ const commitment = rules.extractInsights({subject:"EGC action",body:"Owner: Fadz
 check("commitment candidate date", commitment.commitmentCandidate.committedDateCandidates, ["2026-11-05"]);
 check("commitment remains unconfirmed", commitment.commitmentCandidate.status, "Unconfirmed");
 check("unmatched remains unmatched", rules.extractInsights({subject:"Delivery status",body:"Please confirm delivery.",senderEmail:"supplier@example.com"}).processingStatus, "Unmatched");
+
+const approvalEmail = {
+  subject: "EGC Initial Component Trigger - Approval",
+  senderEmail: "customer@rentokil.example",
+  customerDomains: ["rentokil.example"],
+  body: "Please trigger components as required based on lead times to support an initial quantity of 7k devices. These 7k devices will likely be ordered over an estimated 3-4 month period. Once you have an estimate of when components will be in stock and ready for production I will share a supply plan."
+};
+const approval = rules.extractInsights(approvalEmail);
+check("M2.2 approval project", approval.project.projectId, "ri-egc-pcba");
+check("M2.2 purchasing category", approval.category, "Purchasing");
+check("M2.2 quantity 7k", approval.quantityCandidates[0], {quantity:7000,unit:"devices",sourceText:"7k devices"});
+check("M2.2 estimated period retained", approval.relativeDateCandidates, ["over an estimated 3-4 month period"]);
+check("M2.2 customer sender configured", approval.senderType, "Customer");
+check("M2.2 action sentence extracted", approval.actionCandidates.some(x => /trigger components/i.test(x)), true);
+
+const technicalEmail = {
+  subject: "EGC PCBA move to Exzone - technical follow-up",
+  senderEmail: "engineer@exzone.com.my",
+  body: "We completed assembly and testing of 6 pcs. We encountered an issue scanning the barcode using the PLP software. The PCBA is stuck at waiting for device and refused to enter waiting for barcode. I will repeat the test and record a video to demonstrate the setup and results. MVB SMT is planned for 4 January 2027, followed by assembly on 8 January 2027. Customer requested Process Flow Diagram, Control Plan, Process FMEA, Cpk baseline, Gage R&R reports, Standard Operating Procedures, Certificates of Analysis, Material Test Reports and calibration records."
+};
+const technical = rules.extractInsights(technicalEmail);
+check("M2.2 engineering category", technical.category, "Engineering");
+check("M2.2 technical issue detected", technical.technicalIssue.detected, true);
+check("M2.2 6 pcs quantity", technical.quantityCandidates.some(q => q.quantity === 6 && q.unit === "pcs"), true);
+check("M2.2 dates extracted", technical.dateCandidates, ["2027-01-04","2027-01-08"]);
+check("M2.2 deliverables extracted", technical.deliverableCandidates.includes("process fmea"), true);
+check("M2.2 action evidence extracted", technical.actionCandidates.some(x => /repeat the test/i.test(x)), true);
+
 console.log("Assertions passed: " + passed);
 if (failures.length) { console.error(failures.join("\n")); process.exitCode = 1; }
 else console.log("All M2.1 rule-engine tests passed.");
