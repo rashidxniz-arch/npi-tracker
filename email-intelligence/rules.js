@@ -26,7 +26,8 @@
     { severity: "Medium", terms: ["pending", "awaiting", "at risk", "concern", "slippage"] }
   ];
   var ACTION_PATTERNS = [
-    /\bplease\s+(?:arrange|confirm|provide|review|send|share|check|complete|submit|advise)\b/i,
+    /\bplease\s+(?:arrange|confirm|provide|review|send|share|check|complete|submit|advise|trigger|proceed)\b/i,
+    /\b(?:place|raise|issue)\s+(?:the\s+)?po\b/i,
     /\b(?:follow\s+up|action\s+required|to\s+be\s+completed|need\s+to|must\s+complete|please\s+proceed)\b/i,
     /\b(?:owner|assigned\s+to)\s*[:=-]\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}/i,
     /\b(?:target|due|committed)\s+date\s*[:=-]?\s*(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]20\d{2})/i
@@ -135,11 +136,11 @@
 
   function extractQuantities(text) {
     var source = clean(text), found = [], seen = {};
-    var re = /\\b(\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*(k|pcs?|pieces?|units?|devices?|sets?)\\b/gi, m;
+    var re = /\b(\d+(?:,\d{3})*(?:\.\d+)?)(k)?\s*(pcs?|pieces?|units?|devices?|sets?)\b/gi, m;
     while ((m = re.exec(source)) !== null) {
       var raw = m[1].replace(/,/g, ""), amount = Number(raw);
-      var unit = m[2].toLowerCase();
-      if (unit === "k") { amount *= 1000; unit = "units"; }
+      if (m[2]) amount *= 1000;
+      var unit = m[3].toLowerCase();
       else if (/^pc|^piece/.test(unit)) unit = "pcs";
       else if (/^device/.test(unit)) unit = "devices";
       else if (/^set/.test(unit)) unit = "sets";
@@ -152,10 +153,10 @@
 
   function extractRelativeDatePhrases(text) {
     var source = clean(text), patterns = [
-      /\\b(?:first|second|third|fourth|last)\\s+week\\s+of\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\b/gi,
-      /\\b(?:early|mid|late)\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+(?:20\\d{2})?\\b/gi,
-      /\\b(?:next|this)\\s+(?:week|month|quarter|Monday|Tuesday|Wednesday|Thursday|Friday)\\b/gi,
-      /\\b(?:over|within)\\s+an?\\s+estimated\\s+\\d+\\s*[-–]\\s*\\d+\\s+months?\\b/gi
+      /\b(?:first|second|third|fourth|last)\s+week\s+of\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/gi,
+      /\b(?:early|mid|late)\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+(?:20\d{2})?\b/gi,
+      /\b(?:next|this)\s+(?:week|month|quarter|Monday|Tuesday|Wednesday|Thursday|Friday)\b/gi,
+      /\b(?:over|within)\s+an?\s+estimated\s+\d+\s*[-–]\s*\d+\s+months?\b/gi
     ], found = [];
     patterns.forEach(function (re) {
       var m;
@@ -182,8 +183,8 @@
   }
 
   function extractActionCandidates(text) {
-    var source = clean(text), sentences = source.split(/(?<=[.!?])\\s+/), candidates = [];
-    var actionRe = /\\b(?:please\\s+(?:arrange|confirm|provide|review|send|share|check|complete|submit|proceed|trigger)|will\\s+(?:repeat|record|share|provide|complete|revise|arrange)|to\\s+(?:place|prepare|complete|confirm|share|ship)|must\\s+(?:complete|provide)|required\\s+to)\\b/i;
+    var source = clean(text), sentences = source.split(/(?<=[.!?])\s+/), candidates = [];
+    var actionRe = /\b(?:please\s+(?:arrange|confirm|provide|review|send|share|check|complete|submit|proceed|trigger)|will\s+(?:repeat|record|share|provide|complete|revise|arrange)|to\s+(?:place|prepare|complete|confirm|share|ship)|must\s+(?:complete|provide)|required\s+to)\b/i;
     sentences.forEach(function (sentence) {
       if (actionRe.test(sentence) && candidates.indexOf(sentence) < 0) candidates.push(sentence.slice(0, 300));
     });
