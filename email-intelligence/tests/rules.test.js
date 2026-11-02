@@ -48,6 +48,7 @@ const approvalEmail = {
 const approval = rules.extractInsights(approvalEmail);
 check("M2.2 approval project", approval.project.projectId, "ri-egc-pcba");
 check("M2.2 purchasing category", approval.category, "Purchasing");
+check("M2.2 PO trigger detected as action", approval.actionDetected, true);
 check("M2.2 quantity 7k", approval.quantityCandidates[0], {quantity:7000,unit:"devices",sourceText:"7k devices"});
 check("M2.2 estimated period retained", approval.relativeDateCandidates, ["over an estimated 3-4 month period"]);
 check("M2.2 customer sender configured", approval.senderType, "Customer");
