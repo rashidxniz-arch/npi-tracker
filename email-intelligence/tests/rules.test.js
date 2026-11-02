@@ -69,4 +69,4 @@ check("M2.2 action evidence extracted", technical.actionCandidates.some(x => /re
 
 console.log("Assertions passed: " + passed);
 if (failures.length) { console.error(failures.join("\n")); process.exitCode = 1; }
-else console.log("All M2.1 rule-engine tests passed.");
+else console.log("All M2.2.1 rule-engine tests passed.");
