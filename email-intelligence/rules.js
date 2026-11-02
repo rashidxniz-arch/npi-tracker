@@ -234,7 +234,9 @@
 
   var api = { identifyProject: identifyProject, classifySender: classifySender,
     classifyCategory: classifyCategory, detectRisk: detectRisk, detectAction: detectAction,
-    extractDates: extractDates, extractOwner: extractOwner, extractQuantities: extractQuantities,\n    extractRelativeDatePhrases: extractRelativeDatePhrases, detectTechnicalIssue: detectTechnicalIssue,\n    extractDeliverables: extractDeliverables, extractActionCandidates: extractActionCandidates, extractInsights: extractInsights };
+    extractDates: extractDates, extractOwner: extractOwner, extractQuantities: extractQuantities,
+    extractRelativeDatePhrases: extractRelativeDatePhrases, detectTechnicalIssue: detectTechnicalIssue,
+    extractDeliverables: extractDeliverables, extractActionCandidates: extractActionCandidates, extractInsights: extractInsights };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.NPIEmailRules = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
