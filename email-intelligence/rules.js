@@ -1,5 +1,5 @@
 /**
- * Exzone NPI Tracker — rule-based email intelligence engine (M2.1).
+ * Exzone NPI Tracker — rule-based email intelligence engine (M2.2.1).
  * Pure JavaScript; compatible with Apps Script V8 and Node.js.
  * No network, mailbox access, or database writes occur in this module.
  */
@@ -10,6 +10,8 @@
     { code: "EGC", id: "ri-egc-pcba", aliases: ["eradico gate connect", "gate connect", "egc"] }
   ];
   var CATEGORY_RULES = [
+    { category: "Purchasing", terms: ["place po", "purchase order", "po placement", "component trigger", "trigger components", "purchase components"] },
+    { category: "Engineering", terms: ["software", "firmware", "plp", "debug", "test setup", "troubleshoot", "waiting for device", "barcode"] },
     { category: "Material", terms: ["bare pcb", "pcb", "component", "material", "resin", "shortage", "smt"] },
     { category: "Tooling", terms: ["tooling", "mould", "mold", "tool repair", "cavity", "tool modification"] },
     { category: "Quality", terms: ["defect", "ncr", "nonconformance", "failure", "reject", "corrective action"] },
@@ -130,11 +132,72 @@
     return { ownerCandidate: null, evidenceStatus: "Not identified" };
   }
 
+
+  function extractQuantities(text) {
+    var source = clean(text), found = [], seen = {};
+    var re = /\\b(\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*(k|pcs?|pieces?|units?|devices?|sets?)\\b/gi, m;
+    while ((m = re.exec(source)) !== null) {
+      var raw = m[1].replace(/,/g, ""), amount = Number(raw);
+      var unit = m[2].toLowerCase();
+      if (unit === "k") { amount *= 1000; unit = "units"; }
+      else if (/^pc|^piece/.test(unit)) unit = "pcs";
+      else if (/^device/.test(unit)) unit = "devices";
+      else if (/^set/.test(unit)) unit = "sets";
+      else unit = "units";
+      var key = amount + "|" + unit;
+      if (!seen[key]) { seen[key] = true; found.push({ quantity: amount, unit: unit, sourceText: m[0] }); }
+    }
+    return found;
+  }
+
+  function extractRelativeDatePhrases(text) {
+    var source = clean(text), patterns = [
+      /\\b(?:first|second|third|fourth|last)\\s+week\\s+of\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\b/gi,
+      /\\b(?:early|mid|late)\\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+(?:20\\d{2})?\\b/gi,
+      /\\b(?:next|this)\\s+(?:week|month|quarter|Monday|Tuesday|Wednesday|Thursday|Friday)\\b/gi,
+      /\\b(?:over|within)\\s+an?\\s+estimated\\s+\\d+\\s*[-–]\\s*\\d+\\s+months?\\b/gi
+    ], found = [];
+    patterns.forEach(function (re) {
+      var m;
+      while ((m = re.exec(source)) !== null) if (found.indexOf(m[0]) < 0) found.push(m[0]);
+    });
+    return found;
+  }
+
+  function detectTechnicalIssue(text) {
+    var t = normalize(text);
+    var terms = ["issue", "error", "failed", "failure", "stuck at", "waiting for device", "not responding", "cannot connect", "cannot scan", "refused to", "problem"];
+    var matches = terms.filter(function (term) { return t.indexOf(term) >= 0; });
+    return { detected: matches.length > 0, terms: matches, evidenceStatus: matches.length ? "Rule-derived" : "Not detected" };
+  }
+
+  function extractDeliverables(text) {
+    var source = clean(text), terms = [
+      "process flow diagram", "control plan", "process fmea", "pfmea",
+      "process capability baseline", "cpk", "gage r&r", "standard operating procedures",
+      "sop", "certificates of analysis", "material test reports", "calibration records",
+      "test video", "video"
+    ];
+    return terms.filter(function (term) { return normalize(source).indexOf(term) >= 0; });
+  }
+
+  function extractActionCandidates(text) {
+    var source = clean(text), sentences = source.split(/(?<=[.!?])\\s+/), candidates = [];
+    var actionRe = /\\b(?:please\\s+(?:arrange|confirm|provide|review|send|share|check|complete|submit|proceed|trigger)|will\\s+(?:repeat|record|share|provide|complete|revise|arrange)|to\\s+(?:place|prepare|complete|confirm|share|ship)|must\\s+(?:complete|provide)|required\\s+to)\\b/i;
+    sentences.forEach(function (sentence) {
+      if (actionRe.test(sentence) && candidates.indexOf(sentence) < 0) candidates.push(sentence.slice(0, 300));
+    });
+    return candidates;
+  }
+
   function extractInsights(email) {
     var subject = clean(email.subject), body = clean(email.body), combined = subject + ". " + body;
     var project = identifyProject(subject, body, email.projectId);
     var category = classifyCategory(combined), risk = detectRisk(combined);
     var action = detectAction(combined), dates = extractDates(combined), owner = extractOwner(combined);
+    var quantities = extractQuantities(combined), relativeDates = extractRelativeDatePhrases(combined);
+    var technicalIssue = detectTechnicalIssue(combined), deliverables = extractDeliverables(combined);
+    var actionCandidates = extractActionCandidates(combined);
     var insights = [];
     if (/(received|completed|finished|approved|released|submitted|ready)/i.test(combined)) {
       insights.push({ insightType: "Progress", category: category, description: combined.slice(0, 500), evidenceStatus: "Rule-derived" });
@@ -157,7 +220,8 @@
         supplierDomains: email.supplierDomains
       }),
       category: category, risk: risk, actionDetected: action, owner: owner,
-      dateCandidates: dates,
+      dateCandidates: dates, relativeDateCandidates: relativeDates, quantityCandidates: quantities,
+      technicalIssue: technicalIssue, deliverableCandidates: deliverables, actionCandidates: actionCandidates,
       commitmentCandidate: action && dates.length > 0 ? {
         committedDateCandidates: dates, ownerCandidate: owner.ownerCandidate,
         status: "Unconfirmed", evidenceStatus: "Rule-derived"
@@ -170,7 +234,7 @@
 
   var api = { identifyProject: identifyProject, classifySender: classifySender,
     classifyCategory: classifyCategory, detectRisk: detectRisk, detectAction: detectAction,
-    extractDates: extractDates, extractOwner: extractOwner, extractInsights: extractInsights };
+    extractDates: extractDates, extractOwner: extractOwner, extractQuantities: extractQuantities,\n    extractRelativeDatePhrases: extractRelativeDatePhrases, detectTechnicalIssue: detectTechnicalIssue,\n    extractDeliverables: extractDeliverables, extractActionCandidates: extractActionCandidates, extractInsights: extractInsights };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.NPIEmailRules = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
