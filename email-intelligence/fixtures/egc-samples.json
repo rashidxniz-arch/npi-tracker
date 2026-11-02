@@ -47,7 +47,7 @@
     "expectedProjectId": null,
     "expectedCategory": "General",
     "expectedRisk": "None",
-    "expectedAction": false,
+    "expectedAction": true,
     "email": {
       "subject": "Delivery status update",
       "senderEmail": "supplier@example.com",
