@@ -130,12 +130,10 @@ function m23ProcessEmail_(email) {
       engineVersion: "M2.2.1"
     };
 
-    m23CreateDocument_(M23_CONFIG.emailCollection, messageHash, emailDoc);
-
     var insightCount = 0;
     extracted.insights.forEach(function (insight, index) {
       var insightId = messageHash + "_i" + String(index + 1).padStart(2, "0");
-      m23CreateDocument_(M23_CONFIG.insightCollection, insightId, {
+      m23CreateDocumentIfMissing_(M23_CONFIG.insightCollection, insightId, {
         sourceMessageHash: messageHash,
         projectId: extracted.project.projectId || "",
         insightType: insight.insightType,
@@ -150,6 +148,9 @@ function m23ProcessEmail_(email) {
       insightCount++;
     });
 
+    // Write the primary email marker last. If a previous run failed mid-way,
+    // deterministic insight IDs allow safe retry before this marker is created.
+    m23CreateDocumentIfMissing_(M23_CONFIG.emailCollection, messageHash, emailDoc);
     m23WriteLog_(messageHash, "Processed", "Email classified; " + insightCount + " insight candidate(s) stored.");
     return {
       ok: true,
@@ -206,6 +207,13 @@ function m23GetDocument_(collection, documentId) {
     throw new Error("Firestore read failed (" + status + "): " + response.getContentText());
   }
   return JSON.parse(response.getContentText());
+}
+
+function m23CreateDocumentIfMissing_(collection, documentId, data) {
+  var existing = m23GetDocument_(collection, documentId);
+  if (existing) return false;
+  m23CreateDocument_(collection, documentId, data);
+  return true;
 }
 
 function m23CreateDocument_(collection, documentId, data) {
