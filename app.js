@@ -175,7 +175,7 @@ const VIEWS = ["summary","projects","actions","calendar","workload","updates","e
 const HL = {ok:"On track", warn:"Watch", bad:"At risk"};
 const HORDER = {bad:0, warn:1, ok:2};
 let view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : (store.get("npi-view") || "summary");
-let layout = store.get("npi-layout") || "cards";
+let layout = store.get("npi-layout") || (window.matchMedia && matchMedia("(min-width: 900px)").matches ? "gantt" : "cards");
 let aShow = "open", q = "", hF = "", sF = "", sortK = "", sortDir = 1;
 let emailQuery = "", emailCustomer = "", emailRisk = "";
 let desk = store.get("npi-desk") === "1";
@@ -271,6 +271,7 @@ function renderProjects(){
   const list = projList(), total = D.projects.filter(x=>match(x.owner)).length;
   $("projCount").textContent = list.length===total ? `${total} active project${total===1?"":"s"}${filter!=="all"?" for "+T(filter).short:""}` : `${list.length} of ${total} shown`;
   if(!list.length){ $("projects").innerHTML = `<div class="panel empty">No projects match. ${filter!=="all"?"Try “Whole team”, or post":"Post"} an update and Rashid's Claude will add new ones.</div>`; return; }
+  if(layout==="gantt" && typeof renderGantt==="function"){ renderGantt(list); return; }
   if(layout==="table"){
     const th = (k,l) => `<th data-sort="${k}" class="${sortK===k?(sortDir>0?"asc":"desc"):""}" scope="col">${l}</th>`;
     $("projects").innerHTML = `<div class="tbl-wrap"><table class="reg"><thead><tr>${th("name","Project")}${th("customer","Customer")}${th("owner","Owner")}${th("stage","Stage")}${th("health","Status")}<th scope="col">Next step</th>${th("due","Due")}</tr></thead><tbody>${
@@ -825,8 +826,9 @@ document.addEventListener("visibilitychange", ()=>{
 });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.12";
+const APP_VERSION = "2.13";
 const CHANGES = [
+  {v:"2.13", date:"16 Nov 2026", items:["New Gantt layout on the Projects page, in the same style as NPI Project Planner: one timeline for every project, grouped by customer, owner, stage or status","Each bar shows the project's activity window (first email or update to the latest due date or meeting), coloured by status, with the stage reached shaded dark","Action due dates (◆, red when overdue), meetings, emails, team updates and an orange today line","Day / Week / Month zoom, Today and Fit buttons, and ▸ to show a project's actions underneath it","Bars are not a planned schedule — planned dates still live in NPI Project Planner"]},
   {v:"2.12", date:"16 Nov 2026", items:["Ticks and project updates now stay attached to the right email action after a new snapshot is published","Team-added tasks stay visible when an email snapshot is live","The latest email date is no longer shown as a due date; action due dates come from the snapshot's Due / Target","Owners are only assigned when a team member is named — otherwise shown as Unassigned","Stays signed in between visits; your name comes from your account and can't be switched","Shows how old the email snapshot is and where each project's status came from","Read-only accounts can view but not change data"]},
   {v:"2.11", date:"16 Nov 2026", items:["Added a dedicated read-only Email Intelligence section","Displayed snapshot projects, extracted actions and email evidence from Firestore","Added customer, risk and text filters with snapshot metadata"]},
   {v:"2.10", date:"30 Oct 2026", items:["Removed the obsolete legacy tracker passcode from sign-in","Sign-in now opens directly from the authenticated Firestore account"]},
