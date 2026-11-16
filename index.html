@@ -344,6 +344,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
         <a href="#calendar" data-view="calendar">Calendar</a>
         <a href="#workload" data-view="workload">Workload</a>
         <a href="#updates" data-view="updates">Updates</a>
+        <a href="#email-intel" data-view="email-intel">Email Intel</a>
       </nav>
       <div class="right">
         <div class="clock" aria-hidden="true"><span class="d" id="clkD"></span><span class="t" id="clkT"></span></div>
@@ -375,6 +376,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     <a href="#calendar" data-view="calendar" aria-label="Calendar"><span class="mi">▣</span><span>Calendar</span></a>
     <a href="#workload" data-view="workload" aria-label="Workload"><span class="mi">◷</span><span>Workload</span></a>
     <a href="#updates" data-view="updates" aria-label="Updates"><span class="mi">↻</span><span>Updates</span></a>
+    <a href="#email-intel" data-view="email-intel" aria-label="Email Intelligence"><span class="mi">✉</span><span>Email</span></a>
   </nav>
   <main class="wrap">
     <div id="banner" hidden></div>
@@ -488,6 +490,30 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
           </form>
           <div class="feed" id="feed"></div>
         </div>
+      </div>
+    </section>
+
+
+    <!-- EMAIL INTELLIGENCE -->
+    <section id="v-email-intel" data-v="email-intel" hidden>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="pagehead">
+          <div><h1>Email Intelligence</h1><p>Read-only Outlook-derived project summaries, actions and supporting email evidence.</p></div>
+          <button class="btn primary" type="button" id="emailRefresh">Refresh snapshot</button>
+        </div>
+        <div class="kpis ei-kpis" id="emailIntelMeta"></div>
+        <p class="sub" id="emailIntelSummary">Loading snapshot information…</p>
+        <div class="tools ei-tools">
+          <div class="search"><input class="field" type="search" id="emailSearch" placeholder="Search project, action, subject or evidence…" aria-label="Search email intelligence"></div>
+          <select class="field" id="emailCustomer" aria-label="Filter by customer"><option value="">All customers</option></select>
+          <select class="field" id="emailRisk" aria-label="Filter by risk"><option value="">All risk levels</option><option value="bad">At risk</option><option value="warn">Watch / pending</option><option value="ok">On track / other</option></select>
+        </div>
+        <div class="ei-columns">
+          <section class="card"><div class="card-head"><h2>Project summaries</h2><span class="eyebrow">Latest snapshot</span></div><div class="card-body ei-list" id="emailProjects"></div></section>
+          <section class="card"><div class="card-head"><h2>Extracted actions</h2><span class="eyebrow">Follow-up items</span></div><div class="card-body ei-list" id="emailActions"></div></section>
+        </div>
+        <section class="card"><div class="card-head"><h2>Email evidence</h2><span class="eyebrow">Source traceability</span></div><div class="card-body ei-list" id="emailEvidence"></div></section>
+        <p class="sub">Read-only view. This section does not create, update or delete Firestore records.</p>
       </div>
     </section>
 
