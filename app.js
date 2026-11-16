@@ -611,7 +611,10 @@ function renderEmailIntel(){
     const p=relatedProject(e.Project);
     const customer=p?String(p.Customer||""):"";
     const text=[e["Email Date"],e["Email Subject"],e["Evidence Extract"],e.Project].join(" ").toLowerCase();
-    return (!emailCustomer||customer===emailCustomer) && (!query||text.includes(query));
+    const linkedRisk=p?emailHealth(p["Latest Status"]):"";
+    return (!emailCustomer||customer===emailCustomer) &&
+      (!emailRisk||(p && linkedRisk===emailRisk)) &&
+      (!query||text.includes(query));
   });
   const meta=intel.meta||{};
   const stamp=meta.asOf||"Not available";
