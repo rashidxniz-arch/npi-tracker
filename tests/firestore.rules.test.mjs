@@ -24,6 +24,8 @@ await env.withSecurityRulesDisabled(async ctx => {
   for (const [uid, data] of Object.entries(USERS)) await setDoc(doc(db, "users", uid), data);
   await setDoc(doc(db, "tasks", "t-zul"), { source: "google-sheets", owner: "zul", text: "x", createdBy: "zul", createdByUid: "mem1" });
   await setDoc(doc(db, "tasks", "t-other"), { source: "google-sheets", owner: "yusri", text: "y", createdBy: "yusri", createdByUid: "someone" });
+  // Left untouched by every other test (t-other is reassigned to zul by the reassignment test).
+  await setDoc(doc(db, "tasks", "t-keep"), { source: "google-sheets", owner: "yusri", text: "z", createdBy: "yusri", createdByUid: "someone" });
   await setDoc(doc(db, "emailSnapshots", "v-pub"), { status: "published", asOf: "2026-11-01" });
 });
 const as = uid => env.authenticatedContext(uid).firestore();
@@ -72,7 +74,7 @@ await it("viewer can read but not write", async () => {
 });
 await it("inactive account cannot read", () => assertFails(getDoc(doc(as("off1"), "tasks", "t-zul"))));
 await it("task removal: creator/owner yes, others no", async () => {
-  await assertFails(deleteDoc(doc(as("mem1"), "tasks", "t-other")));
+  await assertFails(deleteDoc(doc(as("mem1"), "tasks", "t-keep")));
   await assertSucceeds(deleteDoc(doc(as("mem1"), "tasks", "t-zul")));
 });
 await it("users cannot change their own role", () => assertFails(updateDoc(doc(as("mem1"), "users", "mem1"), { role: "admin" })));
