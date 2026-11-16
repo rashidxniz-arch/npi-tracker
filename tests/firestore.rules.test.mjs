@@ -91,7 +91,7 @@ await it("admin stages a version and adds records", async () => {
 await it("records cannot be added to a published version", () =>
   assertFails(setDoc(doc(as("admin1"), "emailSnapshots", "v-pub", "projects", "ep-x"), { "Project / Programme": "late" })));
 await it("records cannot be edited or deleted", async () => {
-  await assertFails(updateDoc(doc(as("admin1"), "emailSnapshots", "v1", "projects", "ep-1"), { "Project / Programme": "changed" }));
+  await assertFails(updateDoc(doc(as("admin1"), "emailSnapshots", "v1", "projects", "ep-1"), { note: "changed" }));
   await assertFails(deleteDoc(doc(as("admin1"), "emailSnapshots", "v1", "projects", "ep-1")));
 });
 await it("records of an unknown kind are refused; evidence is allowed", async () => {
