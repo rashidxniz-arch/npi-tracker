@@ -26,6 +26,13 @@ check("slash dates", rules.extractDates("Due 05/11/2026 and 2026/11/08."), ["202
 check("named date", rules.extractDates("Please complete by 5 Nov 2026."), ["2026-11-05"]);
 check("invalid date ignored", rules.extractDates("Due 31/02/2026."), []);
 check("project code", rules.identifyProject("EGC update", "").projectId, "ri-egc-pcba");
+// M2.2.2 regression: short terms must match whole words only (synthetic text).
+check("'second' is not ECO", rules.classifyCategory("Second sample shipment"), "Supplier");
+check("'become' is not ECO", rules.classifyCategory("We will become ready next week"), "General");
+check("'economy' is not ECO", rules.classifyCategory("The economy is stable"), "General");
+check("ECO still detected", rules.classifyCategory("ECO 780 signed"), "Customer");
+check("plural still matches", rules.classifyCategory("Please trigger components now"), "Purchasing");
+check("past tense risk", rules.detectRisk("The shipment was delayed").severity, "High");
 check("negated delay", rules.detectRisk("There is no delay to the pilot run.").severity, "None");
 check("negated shortage", rules.detectRisk("No material shortage has been reported.").severity, "None");
 check("negated component shortage", rules.detectRisk("There is no component shortage.").severity, "None");
@@ -69,4 +76,4 @@ check("M2.2 action evidence extracted", technical.actionCandidates.some(x => /re
 
 console.log("Assertions passed: " + passed);
 if (failures.length) { console.error(failures.join("\n")); process.exitCode = 1; }
-else console.log("All M2.2.1 rule-engine tests passed.");
+else console.log("All M2.2.2 rule-engine tests passed.");

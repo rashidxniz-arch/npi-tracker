@@ -77,7 +77,9 @@ function doPost(e) {
     }
     return m23Json_(m23ProcessEmail_(body.email || {}));
   } catch (err) {
-    return m23Json_({ ok: false, error: "processing_error", message: String(err.message || err) });
+    // Details go to the execution log only; callers get a generic error so Firestore responses are not echoed back.
+    console.error("doPost processing_error: " + String(err && err.message || err));
+    return m23Json_({ ok: false, error: "processing_error" });
   }
 }
 
@@ -127,7 +129,7 @@ function m23ProcessEmail_(email) {
       technicalIssueDetected: extracted.technicalIssue.detected,
       deliverableCandidates: extracted.deliverableCandidates,
       processedAt: m23Now_(),
-      engineVersion: "M2.2.1"
+      engineVersion: "M2.2.2"
     };
 
     var insightCount = 0;
@@ -235,7 +237,7 @@ function m23WriteLog_(messageHash, status, detail) {
     status: status,
     detail: String(detail || "").slice(0, 300),
     processedAt: m23Now_(),
-    engineVersion: "M2.2.1"
+    engineVersion: "M2.2.2"
   });
 }
 

@@ -352,7 +352,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
         <div class="menu">
           <button class="namebtn" type="button" id="meBtn" aria-haspopup="true" aria-expanded="false"></button>
           <div class="dropdown" id="meMenu" hidden>
-            <div><label class="eyebrow" for="whoami">I am</label><select class="field" id="whoami"></select></div>
+            <div><label class="eyebrow" for="whoami">Signed in as</label><select class="field" id="whoami"></select></div>
             <div class="stamp">Tracker updated <b id="syncStamp">—</b><div id="covStamp" style="margin-top:2px"></div></div>
             <div class="sep"></div>
             <button class="mi" type="button" id="refresh">Refresh now</button>
@@ -498,8 +498,8 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     <section id="v-email-intel" data-v="email-intel" hidden>
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="pagehead">
-          <div><h1>Email Intelligence</h1><p>Read-only Outlook-derived project summaries, actions and supporting email evidence.</p></div>
-          <button class="btn primary" type="button" id="emailRefresh">Refresh snapshot</button>
+          <div><h1>Email Intelligence</h1><p>Read-only summaries from the last email snapshot that was prepared from Outlook and published by an admin. Reloading shows the latest published snapshot; it does not read new Outlook email.</p></div>
+          <button class="btn primary" type="button" id="emailRefresh">Reload published snapshot</button>
         </div>
         <div class="kpis ei-kpis" id="emailIntelMeta"></div>
         <p class="sub" id="emailIntelSummary">Loading snapshot information…</p>
@@ -518,7 +518,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     </section>
 
     <footer class="site">
-      <span><b id="verFoot"></b> · Project status is updated each weekday by Rashid's Claude from Outlook. Updates you post on a project show under it straight away and are folded into its status at the next refresh. Please don't post HR or personal matters.</span>
+      <span><b id="verFoot"></b> · Project status comes from the latest email snapshot published by Rashid (see the date in your name menu). Updates you post on a project show under it straight away. Please don't post HR or personal matters.</span>
       <div class="exzone"><img src="icons/exzone-logo.png" alt="Exzone" onerror="this.remove()"><span>EXZONE Precision Engineering Sdn. Bhd. · NPI team</span></div>
     </footer>
   </main>
@@ -544,6 +544,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
+<script src="lib/snapshot.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

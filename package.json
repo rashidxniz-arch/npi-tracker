@@ -1,0 +1,18 @@
+{
+  "name": "npi-tracker",
+  "private": true,
+  "description": "Exzone NPI Tracker PWA \u2014 test and check scripts only (the app itself has no build step).",
+  "scripts": {
+    "check": "node --check app.js && node --check sw.js && node --check config.js && node --check lib/snapshot.js && node --check email-intelligence/rules.js && node tests/check-sync.js",
+    "test": "npm run check && node tests/snapshot.test.js && node email-intelligence/tests/rules.test.js",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-npi \"node tests/firestore.rules.test.mjs\"",
+    "test:smoke": "node tests/smoke/run.mjs"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase": "^10.14.1",
+    "firebase-tools": "^13.35.1",
+    "playwright": "^1.48.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

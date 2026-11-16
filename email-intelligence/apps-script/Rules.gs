@@ -1,5 +1,5 @@
 /**
- * Exzone NPI Tracker — rule-based email intelligence engine (M2.2.1).
+ * Exzone NPI Tracker — rule-based email intelligence engine (M2.2.2: whole-word matching).
  * Pure JavaScript; compatible with Apps Script V8 and Node.js.
  * No network, mailbox access, or database writes occur in this module.
  */
@@ -38,7 +38,14 @@
       .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
   }
   function normalize(value) { return clean(value).toLowerCase().replace(/[\u2010-\u2015]/g, "-"); }
-  function containsAny(text, terms) { return terms.some(function (term) { return text.indexOf(term) !== -1; }); }
+  // Whole-word match (plus simple plural/tense endings), so "eco" no longer matches "second" or "become",
+  // and "bis" no longer matches inside other words. Multi-word terms work the same way.
+  var TERM_RE = {};
+  function termRe(term) {
+    if (!TERM_RE[term]) TERM_RE[term] = new RegExp("(^|[^a-z0-9])" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:s|es|ed|d|ing)?(?=[^a-z0-9]|$)");
+    return TERM_RE[term];
+  }
+  function containsAny(text, terms) { return terms.some(function (term) { return termRe(term).test(text); }); }
 
   function identifyProject(subject, body, explicitProjectId) {
     if (explicitProjectId) {
@@ -176,7 +183,7 @@
   function detectTechnicalIssue(text) {
     var t = normalize(text);
     var terms = ["issue", "error", "failed", "failure", "stuck at", "waiting for device", "not responding", "cannot connect", "cannot scan", "refused to", "problem"];
-    var matches = terms.filter(function (term) { return t.indexOf(term) >= 0; });
+    var matches = terms.filter(function (term) { return termRe(term).test(t); });
     return { detected: matches.length > 0, terms: matches, evidenceStatus: matches.length ? "Rule-derived" : "Not detected" };
   }
 
