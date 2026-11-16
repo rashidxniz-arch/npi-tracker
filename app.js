@@ -116,7 +116,8 @@ async function loadFirestoreData(){
     actions=data.tasks.filter(x=>x.source==="tracker").map(x=>({...x,id:x.id||x.docId}));
     teamTasks=data.tasks.filter(x=>x.source==="google-sheets").map(x=>({...x,id:x.id||x.docId}));
   }
-  D={projects,actions,meetings:data.meetings.map(x=>({...x,id:x.id||x.docId})),team,lastSync:"",coverage:null};
+  D={projects,actions,meetings:data.meetings.map(x=>({...x,id:x.id||x.docId})),team,lastSync:"",coverage:null,
+    emailIntel:{projects:data.emailSnapshotProjects,actions:data.emailSnapshotActions,evidence:data.emailSnapshotEvidence,meta:meta||null}};
   TD={ok:true,tasks:teamTasks,status:data.status,updates:data.updates,effort:data.workload};
   teamOk=true;
   return {projects:projects.length,actions:actions.length,teamTasks:teamTasks.length,meetings:D.meetings.length,status:TD.status.length,updates:TD.updates.length,team:data.team.length,snapshot:!!meta};
@@ -196,12 +197,13 @@ function ownerOptions(sel, withBlank){ return (withBlank?`<option value="">— C
 
 
 /* ---------- view state ---------- */
-const VIEWS = ["summary","projects","actions","calendar","workload","updates"];
+const VIEWS = ["summary","projects","actions","calendar","workload","updates","email-intel"];
 const HL = {ok:"On track", warn:"Watch", bad:"At risk"};
 const HORDER = {bad:0, warn:1, ok:2};
 let view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : (store.get("npi-view") || "summary");
 let layout = store.get("npi-layout") || "cards";
 let aShow = "open", q = "", hF = "", sF = "", sortK = "", sortDir = 1;
+let emailQuery = "", emailCustomer = "", emailRisk = "";
 let desk = store.get("npi-desk") === "1";
 const addDays = (iso, n) => { const d = new Date(dt(iso).getTime()+n*864e5); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
 const pname = id => (D.projects.find(p=>p.id===id)||{}).name;
@@ -228,7 +230,7 @@ function render(){
   const nOpen = acts.filter(a=>!a.done && (!me || a.owner===me)).length;
   $("nAct").textContent = nOpen || ""; $("nAct").title = me ? "Your open actions" : "Open actions";
   $("nAct").classList.toggle("bad", acts.some(a=>!a.done && a.urgent && (!me || a.owner===me)));
-  renderFilters(); renderKpis(); renderDash(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed(); renderWorkload(); renderView();
+  renderFilters(); renderKpis(); renderDash(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed(); renderWorkload(); renderEmailIntel(); renderView();
 }
 function projOptions(sel){
   return `<option value="">General update (no project)</option>` + D.projects.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${esc(p.id)}" ${p.id===sel?"selected":""}>${esc(p.name)}</option>`).join("");
@@ -562,6 +564,91 @@ function openEvidence(k){
   popPid = ""; const dlg=$("pop"); if(!dlg.open) dlg.showModal(); $("popBody").scrollTop=0;
 }
 
+
+/* ---------- email intelligence: read-only snapshot view ---------- */
+function emailHealth(raw){
+  const v=String(raw||"").toLowerCase();
+  return /risk|delay|paused|gated|urgent|blocked|challenged|not feasible/.test(v) ? "bad" :
+    /watch|pending|review|waiting|planned|open|not confirmed|quotation/.test(v) ? "warn" : "ok";
+}
+function emailIntelProjectFor(raw, projects){
+  const v=String(raw||"").toLowerCase().trim();
+  if(!v) return null;
+  return projects.find(p=>{
+    const name=String(p["Project / Programme"]||"").toLowerCase();
+    return name===v || name.includes(v) || v.includes(name.split("/")[0].trim());
+  }) || null;
+}
+function renderEmailIntel(){
+  const intel=(D && D.emailIntel) || {projects:[],actions:[],evidence:[],meta:null};
+  const projects=intel.projects||[], actions=intel.actions||[], evidence=intel.evidence||[];
+  const customerSelect=$("emailCustomer"), riskSelect=$("emailRisk");
+  if(!customerSelect || !riskSelect) return;
+  const customers=[...new Set(projects.map(p=>String(p.Customer||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  customerSelect.innerHTML='<option value="">All customers</option>'+customers.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join("");
+  customerSelect.value=customers.includes(emailCustomer)?emailCustomer:"";
+  emailCustomer=customerSelect.value;
+  riskSelect.value=emailRisk;
+  const query=emailQuery.toLowerCase();
+  const projectMatch=p=>{
+    const status=String(p["Latest Status"]||"");
+    const customer=String(p.Customer||"");
+    const text=[p["Project / Programme"],customer,status,p["Latest Evidence / Update"],p["Next Action"],p["Risk / Notes"],p.Workstream,p["Mentioned Owner / Contact"]].join(" ").toLowerCase();
+    return (!emailCustomer||customer===emailCustomer) &&
+      (!emailRisk||emailHealth(status)===emailRisk) && (!query||text.includes(query));
+  };
+  const visibleProjects=projects.filter(projectMatch);
+  const relatedProject=raw=>emailIntelProjectFor(raw,projects);
+  const visibleActions=actions.filter(a=>{
+    const p=relatedProject(a.Project);
+    const customer=p?String(p.Customer||""):"";
+    const state=String(a["Latest State"]||"");
+    const text=[a.Action,a.Project,a["Mentioned Owner / Team"],a["Due / Target"],a["Evidence / Notes"],state].join(" ").toLowerCase();
+    return (!emailCustomer||customer===emailCustomer) &&
+      (!emailRisk||emailHealth(state)===emailRisk) && (!query||text.includes(query));
+  });
+  const visibleEvidence=evidence.filter(e=>{
+    const p=relatedProject(e.Project);
+    const customer=p?String(p.Customer||""):"";
+    const text=[e["Email Date"],e["Email Subject"],e["Evidence Extract"],e.Project].join(" ").toLowerCase();
+    const linkedRisk=p?emailHealth(p["Latest Status"]):"";
+    return (!emailCustomer||customer===emailCustomer) &&
+      (!emailRisk||(p && linkedRisk===emailRisk)) &&
+      (!query||text.includes(query));
+  });
+  const meta=intel.meta||{};
+  const stamp=meta.asOf||"Not available";
+  $("emailIntelMeta").innerHTML=[
+    ["Projects",projects.length],["Actions",actions.length],["Evidence",evidence.length],["Snapshot",stamp]
+  ].map(([label,value])=>'<div class="kpi"><span class="eyebrow">'+esc(label)+'</span><b>'+esc(value)+'</b><small>'+(label==="Snapshot"?"Published snapshot":"Firestore records")+'</small></div>').join("");
+  $("emailIntelSummary").textContent=
+    (meta.publishedAt && meta.publishedAt.toDate ? "Published "+meta.publishedAt.toDate().toLocaleString() :
+      meta.publishedAt ? "Published "+String(meta.publishedAt) : "Publication time unavailable")+
+    (meta.publishedBy?" · by "+meta.publishedBy:"")+
+    " · Showing "+visibleProjects.length+" projects, "+visibleActions.length+" actions and "+visibleEvidence.length+" evidence records.";
+  $("emailProjects").innerHTML=visibleProjects.length?visibleProjects.map(p=>{
+    const status=String(p["Latest Status"]||"Not specified"), health=emailHealth(status);
+    return '<article class="ei-card"><div class="ei-head"><div><span class="eyebrow">'+esc(p.Customer||"Customer not specified")+'</span><h3>'+esc(p["Project / Programme"]||"Unnamed project")+'</h3></div><span class="pill '+health+'">'+esc(status)+'</span></div>'+
+      '<p class="ei-copy">'+esc(p["Latest Evidence / Update"]||"No latest update recorded.")+'</p>'+
+      '<div class="ei-next"><b>Next action:</b> '+esc(p["Next Action"]||"Not specified")+'</div>'+
+      '<div class="ei-meta"><span>Owner: '+esc(p["Mentioned Owner / Contact"]||"Not specified")+'</span><span>Latest email: '+esc(p["Latest Email Date"]||"—")+'</span><span>Workstream: '+esc(p.Workstream||"—")+'</span></div>'+
+      (p["Risk / Notes"]?'<div class="ei-note"><b>Risk / notes:</b> '+esc(p["Risk / Notes"])+'</div>':"")+
+      '<div class="ei-id">Record '+esc(p.docId||"—")+'</div></article>';
+  }).join(""):'<div class="empty">No project records match these filters.</div>';
+  $("emailActions").innerHTML=visibleActions.length?visibleActions.map(a=>{
+    const state=String(a["Latest State"]||"Not specified");
+    return '<article class="ei-row"><div class="ei-head"><h3>'+esc(a.Action||"Action not specified")+'</h3><span class="pill '+emailHealth(state)+'">'+esc(state)+'</span></div>'+
+      '<div class="ei-meta"><span>Project: '+esc(a.Project||"—")+'</span><span>Owner / team: '+esc(a["Mentioned Owner / Team"]||"—")+'</span><span>Due / target: '+esc(a["Due / Target"]||"—")+'</span></div>'+
+      (a["Evidence / Notes"]?'<p class="ei-copy">'+esc(a["Evidence / Notes"])+'</p>':"")+
+      '<div class="ei-id">Record '+esc(a.docId||"—")+'</div></article>';
+  }).join(""):'<div class="empty">No action records match these filters.</div>';
+  $("emailEvidence").innerHTML=visibleEvidence.length?visibleEvidence.map(e=>
+    '<article class="ei-row"><div class="ei-head"><h3>'+esc(e["Email Subject"]||"Email subject unavailable")+'</h3><span class="eyebrow">'+esc(e["Email Date"]||"Date unavailable")+'</span></div>'+
+    '<p class="ei-copy">'+esc(e["Evidence Extract"]||"No extract recorded.")+'</p>'+
+    '<div class="ei-meta"><span>Project: '+esc(e.Project||"—")+'</span><span>Record: '+esc(e.docId||"—")+'</span></div></article>'
+  ).join(""):'<div class="empty">No email evidence matches these filters.</div>';
+}
+
 /* ---------- project pop-up ---------- */
 let popPid = "";
 function openProject(pid){
@@ -670,6 +757,10 @@ window.addEventListener("hashchange", ()=>{ const v=location.hash.slice(1); if(V
 $("q").addEventListener("input", e=>{ q=e.target.value.trim(); renderProjects(); });
 $("hFilter").onchange = e=>{ hF=e.target.value; renderProjects(); };
 $("sFilter").onchange = e=>{ sF=e.target.value; renderProjects(); };
+$("emailSearch").addEventListener("input",e=>{emailQuery=e.target.value.trim();renderEmailIntel();});
+$("emailCustomer").onchange=e=>{emailCustomer=e.target.value;renderEmailIntel();};
+$("emailRisk").onchange=e=>{emailRisk=e.target.value;renderEmailIntel();};
+$("emailRefresh").onclick=async()=>{const b=$("emailRefresh");b.disabled=true;b.textContent="Refreshing…";try{await loadFirestoreData();render();toast("Email snapshot refreshed");}catch(e){toast("Refresh failed: "+(e.message||"connection error"));}finally{b.disabled=false;b.textContent="Refresh snapshot";}};
 $("whoami").onchange = e=>{ me=e.target.value; store.set("npi-me", me); render(); };
 $("deskBtn").onclick = ()=>{ desk=!desk; store.set("npi-desk-set","1"); store.set("npi-desk", desk?"1":""); renderView(); };
 $("actions").addEventListener("change", async e=>{
@@ -732,8 +823,9 @@ $("lockForm").onsubmit = async e=>{
 document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadFirestoreData().then(render).catch(e=>console.warn("Background refresh failed",e)); });
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.10";
+const APP_VERSION = "2.11";
 const CHANGES = [
+  {v:"2.11", date:"16 Nov 2026", items:["Added a dedicated read-only Email Intelligence section","Displayed snapshot projects, extracted actions and email evidence from Firestore","Added customer, risk and text filters with snapshot metadata"]},
   {v:"2.10", date:"30 Oct 2026", items:["Removed the obsolete legacy tracker passcode from sign-in","Sign-in now opens directly from the authenticated Firestore account"]},
   {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},
   {v:"2.8", date:"30 Oct 2026", items:["Enabled Firestore-backed task creation and team assignment","Added task reassignment, completion, progress updates and effort-hour writes","Added append-only audit events for key task and progress changes"]},
