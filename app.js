@@ -75,7 +75,7 @@ async function loadFirestoreData(){
   const meta=snap.meta;
   let projects, actions;
   if(meta && snap.projects.length){
-    const mapped=S.mapSnapshot({projects:snap.projects,actions:snap.actions},Object.fromEntries(Object.entries(team).filter(([k])=>ACTIVE_TEAM.has(k))));
+    const mapped=S.mapSnapshot({projects:snap.projects,actions:snap.actions},Object.fromEntries(Object.entries(team).filter(([k])=>ACTIVE_TEAM.has(k))),{legacyIndex:!meta.version});
     projects=mapped.projects; actions=mapped.actions;
   } else {
     projects=data.projects.map(x=>({...x,id:x.id||x.docId}));
@@ -108,7 +108,7 @@ async function auditEvent(action, entityId, details){
   await firestore.collection("auditLogs").add({actorUid:uid,actor:me,action,entityId:String(entityId),details:details||{},at:firebase.firestore.FieldValue.serverTimestamp()});
 }
 function canRemove(x){ const uid=firebaseAuth&&firebaseAuth.currentUser&&firebaseAuth.currentUser.uid; return canWrite() && (currentProfile.role==="admin" || x.createdByUid===uid || x.owner===me); }
-function canWrite(){ return !!(currentProfile && currentProfile.active===true && String(currentProfile.role||"member")!=="viewer"); }
+function canWrite(){ return !!(currentProfile && currentProfile.active===true && me && String(currentProfile.role||"member")!=="viewer"); }
 async function send(payload, okMsg){
   if(currentProfile && !canWrite()){ toast("Your account is read-only."); return false; }
   if(!firebaseAuth || !firebaseAuth.currentUser || !currentProfile || currentProfile.active!==true){ toast("Your active Firebase session is required."); return false; }
@@ -198,7 +198,8 @@ function render(){
   const b = $("banner"), msgs = [], age = snapshotAgeDays();
   if((D.loadWarnings||[]).length) msgs.push(`Some data could not be loaded (${D.loadWarnings.join(", ")}). Ticks, updates or hours may be missing — use Refresh now.`);
   if(age!==null && age>7) msgs.push(`The email snapshot is ${age} days old (as of ${fmtDate(D.lastSync)}). Projects and email actions may be out of date until a newer snapshot is published.`);
-  if(currentProfile && !canWrite()) msgs.push("Your account is read-only: you can view everything but cannot add or change tasks.");
+  if(currentProfile && !me) msgs.push("Your account is not linked to a team member yet, so you can view but not change anything. Ask Rashid to set teamKey on your profile.");
+  else if(currentProfile && !canWrite()) msgs.push("Your account is read-only: you can view everything but cannot add or change tasks.");
   if(msgs.length){ b.hidden=false; b.className="banner warn"; b.textContent=msgs.join(" "); } else b.hidden=true;
   document.querySelectorAll("#actForm button,#postForm button,#actForm input,#actForm select,#postForm textarea,#postForm select").forEach(x=>x.disabled=!canWrite());
   const acts = allActions();
@@ -767,13 +768,10 @@ $("logout").onclick = async ()=>{ ["npi-code","npi-me","npi-team-cache"].forEach
 
 /* ---------- start ---------- */
 document.body.classList.toggle("desk", desk);
-/** Team key for the signed-in account: users/{uid}.teamKey first (authoritative), then a name match for older profiles. */
-function profileKey(profile, email){
+/** Team key for the signed-in account. Only users/{uid}.teamKey counts: the Firestore rules check exactly this field. */
+function profileKey(profile){
   const k=String(profile.teamKey||"").toLowerCase();
-  if(ACTIVE_TEAM.has(k)) return k;
-  const d=String(profile.name||profile.displayName||String(email||"").split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g,"");
-  if(ACTIVE_TEAM.has(d)) return d;
-  return [...ACTIVE_TEAM].find(t=>d.includes(t)) || "";
+  return ACTIVE_TEAM.has(k) ? k : "";
 }
 async function open(){
   await loadFirestoreData();
@@ -795,16 +793,17 @@ async function establish(user){
   const btn=$("lockBtn"); btn.disabled=true; btn.textContent="Opening NPI Tracker…";
   try{
     const profileSnap=await firestore.collection("users").doc(user.uid).get();
-    if(!profileSnap.exists) throw new Error("Your account has no NPI Tracker profile. Ask Rashid to provision it.");
+    const deny=m=>Object.assign(new Error(m),{accountProblem:true});
+    if(!profileSnap.exists) throw deny("Your account has no NPI Tracker profile. Ask Rashid to provision it.");
     const profile=profileSnap.data();
-    if(profile.active!==true) throw new Error("Your NPI Tracker account is inactive. Contact Rashid.");
+    if(profile.active!==true) throw deny("Your NPI Tracker account is inactive. Contact Rashid.");
     currentProfile=profile;
-    me=profileKey(profile, user.email);
-    if(!me) console.warn("No team key for this account; writes will be refused until users/{uid}.teamKey is set.");
+    me=profileKey(profile);
     await open();
   }catch(x){
     lockError(x); currentProfile=null; me="";
-    if(firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut().catch(()=>{});
+    // Sign out only when the account itself is not allowed; keep the session for network/load errors so the next visit can retry.
+    if(x && x.accountProblem && firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut().catch(()=>{});
   }finally{ opening=false; btn.disabled=false; btn.textContent="Sign in"; }
 }
 $("lockForm").onsubmit = async e=>{

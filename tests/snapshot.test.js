@@ -22,11 +22,26 @@ t("dates: common formats", () => {
   assert.strictEqual(S.parseDate("2026-11-02T08:00:00Z"), "2026-11-02");
   assert.strictEqual(S.parseDate("02/11/2026"), "2026-11-02", "day-first");
   assert.strictEqual(S.parseDate(46325), "2026-10-30", "Excel serial");
-  assert.strictEqual(S.parseDate({ seconds: Date.UTC(2026, 9, 30, 4) / 1000 }), "2026-10-30", "Timestamp-like");
+  assert.strictEqual(S.parseDate({ seconds: new Date(2026, 9, 30, 12).getTime() / 1000 }), "2026-10-30", "Timestamp-like");
   assert.strictEqual(S.parseDate("31 Feb 2026"), "", "invalid day");
   assert.strictEqual(S.parseDate("next week"), "");
   assert.strictEqual(S.parseDate(""), "");
   assert.strictEqual(S.parseDate("5 Jan 2027"), "2027-01-05", "not limited to 2026");
+});
+
+t("dates: review regressions (run with TZ=Asia/Kuala_Lumpur)", () => {
+  // SheetJS cellDates can give local midnight minus seconds — must stay on the intended day.
+  const sheetJsLike = new Date(new Date(2025, 9, 31).getTime() - 25000);
+  assert.strictEqual(S.parseDate(sheetJsLike), "2025-10-31");
+  assert.strictEqual(S.text(new Date(2025, 9, 31)), "2025-10-31", "text() uses the local calendar date");
+  assert.strictEqual(S.parseDate(45961.6), "2025-10-31", "afternoon serial stays on its day");
+  assert.strictEqual(S.parseDate("send 2 decks"), "", "not a month");
+  assert.strictEqual(S.parseDate("3 marks"), "");
+  assert.strictEqual(S.parseDate("ETA 3 pcs by 15 Nov 2026"), "2026-11-15", "keeps looking after a non-date");
+  assert.strictEqual(S.parseDate("5 Jan", 2026), "2026-01-05");
+  const dec = new Date(2026, 11, 20); const realNow = Date; // nearest-year: "5 Jan" read in December is next January
+  global.Date = class extends realNow { constructor(...a) { if (!a.length) return new realNow(dec); return new realNow(...a); } static UTC(...a) { return realNow.UTC(...a); } };
+  try { assert.strictEqual(S.parseDate("5 Jan"), "2027-01-05"); } finally { global.Date = realNow; }
 });
 
 t("stable IDs do not depend on row order", () => {
@@ -39,10 +54,24 @@ t("stable IDs do not depend on row order", () => {
   assert.ok(/^ep-/.test(a.projects[0].id) && /^ea-/.test(a.actions[0].id));
 });
 
-t("legacy index IDs kept for old ticks", () => {
-  const m = S.mapSnapshot({ projects: P, actions: A }, TEAM);
-  assert.strictEqual(m.actions[0].legacyId, "email-action-001");
-  assert.strictEqual(m.projects[1].legacyId, "email-project-002");
+t("legacy IDs: row position only for the legacy flat layout, otherwise carried by content", () => {
+  const flat = S.mapSnapshot({ projects: P, actions: A }, TEAM, { legacyIndex: true });
+  assert.strictEqual(flat.actions[0].legacyId, "email-action-001");
+  assert.strictEqual(flat.projects[1].legacyId, "email-project-002");
+  const versioned = S.mapSnapshot({ projects: P, actions: A }, TEAM);
+  assert.strictEqual(versioned.actions[0].legacyId, "", "no positional guess for versioned data");
+  // Publisher: the next workbook has the rows in a different order plus a new action.
+  const map = S.legacyIdMap({ projects: P, actions: A }, null);
+  const next = S.buildDocs({ projects: P.slice().reverse(), actions: [{ Action: "New one", Project: "Beta Lens" }, A[1], A[0]], evidence: E }, map);
+  const byText = t => next.actions.find(d => d.data.Action === t).data.legacyId;
+  assert.strictEqual(byText("Send DFM reply"), "email-action-001", "follows the content, not the row");
+  assert.strictEqual(byText("Confirm sample qty"), "email-action-002");
+  assert.strictEqual(byText("New one"), undefined, "new rows get no legacy ID");
+  // And the following publish carries it forward from the live version.
+  const carried = S.legacyIdMap(null, { projects: next.projects, actions: next.actions });
+  assert.strictEqual(carried[next.actions.find(d => d.data.Action === "Send DFM reply").id], "email-action-001");
+  const mapped = S.mapSnapshot({ projects: next.projects.map(d => d.data), actions: next.actions.map(d => d.data) }, TEAM);
+  assert.strictEqual(mapped.actions.find(a => a.text === "Send DFM reply").legacyId, "email-action-001");
 });
 
 t("duplicate keys get suffixes, not collisions", () => {
@@ -77,8 +106,10 @@ t("health and done detection", () => {
 
 t("project linking: exact first, ambiguous → none", () => {
   assert.strictEqual(S.linkProject("Alpha Housing", P), P[0]);
-  assert.strictEqual(S.linkProject("beta", P), P[1]);
+  assert.strictEqual(S.linkProject("beta lens", P), P[1]);
   assert.strictEqual(S.linkProject("", P), null);
+  assert.strictEqual(S.linkProject("lens", P), P[1], "4+ letters can link loosely");
+  assert.strictEqual(S.linkProject("bet", P), null, "too short to link loosely");
   const twins = [{ "Project / Programme": "Gamma One" }, { "Project / Programme": "Gamma Two" }];
   assert.strictEqual(S.linkProject("gamma", twins), null);
 });

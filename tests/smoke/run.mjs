@@ -157,6 +157,9 @@ await signIn("zul@example.test");
 await page.goto(BASE + "/index.html#actions"); await page.waitForTimeout(300); await page.click('[data-ashow="all"]'); await page.waitForTimeout(150);
 assert.strictEqual(await page.isChecked('.row:has-text("Send synthetic DFM") .check'), true, "tick survives republish with reordered rows");
 ok("tick made before the republish is still on the same action (rows were reordered)");
+assert.strictEqual(await page.isChecked('.row:has-text("Confirm synthetic qty") .check'), true, "old index-ID tick follows its action by content");
+assert.strictEqual(await page.isChecked('.row:has-text("Book synthetic trial") .check'), false, "an unrelated new action must not inherit an old tick");
+ok("tick saved by v2.11 under email-action-002 follows its action by content, not by row");
 assert.ok((await page.textContent("#syncStamp")).includes("14 Nov"));
 ok("tracker shows the new snapshot date");
 

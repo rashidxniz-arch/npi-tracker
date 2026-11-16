@@ -69,11 +69,8 @@ const TEAM = ["rashid","fadzmi","liyana","yusri","zul","fakrul","wajdi","shamsur
 const BATCH = 400;
 let user = null, profile = null, myKey = "", parsed = null, report = null, fileName = "", backupReady = false, liveMeta = null, busy = false;
 
-function teamKeyOf(p, email){
-  const k = String(p.teamKey || "").toLowerCase(); if (TEAM.includes(k)) return k;
-  const d = String(p.name || p.displayName || String(email || "").split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g, "");
-  return TEAM.includes(d) ? d : (TEAM.find(t => d.includes(t)) || "");
-}
+// Only users/{uid}.teamKey counts — the Firestore rules check exactly this field for the audit entry.
+function teamKeyOf(p){ const k = String(p.teamKey || "").toLowerCase(); return TEAM.includes(k) ? k : ""; }
 const isAdmin = () => !!(user && profile && profile.active === true && profile.role === "admin");
 const liveVersion = m => m ? (m.version || "legacy") : "none";
 function msg(el, text, kind){ const x = $(el); x.textContent = text; x.className = "msg" + (kind ? " " + kind : ""); }
@@ -92,7 +89,7 @@ auth.onAuthStateChanged(async u => {
   user = u; profile = null; myKey = "";
   if (u) { try { const d = await db.collection("users").doc(u.uid).get(); profile = d.exists ? d.data() : null; } catch (e) { profile = null; } }
   const active = !!(user && profile && profile.active === true);
-  if (active) myKey = teamKeyOf(profile, u.email);
+  if (active) myKey = teamKeyOf(profile);
   $("auth").classList.toggle("hide", active);
   $("admin").classList.toggle("hide", !isAdmin());
   $("versionsCard").classList.toggle("hide", !isAdmin());
@@ -187,15 +184,18 @@ async function mirrorLegacy(docs){
 }
 $("publish").onclick = async () => {
   if (!isAdmin() || !report || !report.ok || !backupReady || busy) return;
-  if (!myKey) { msg("pubMsg", "Your profile has no team key, so the audit entry cannot be written. Add teamKey to your users document first.", "bad"); return; }
+  if (!myKey) { msg("pubMsg", "Your profile has no teamKey, so the audit entry cannot be written. Add teamKey to your users document first (docs/DEPLOYMENT.md step 1).", "bad"); return; }
   if (!confirm("Publish " + fileName + " (latest email " + report.asOf + ") as the live snapshot?")) return;
   busy = true; setButtons(); $("steps").innerHTML = ""; msg("pubMsg", "Publishing…");
   const expected = liveVersion(liveMeta);
   const version = report.asOf + "_" + new Date().toISOString().replace(/\D/g, "").slice(0, 14) + "_" + Math.random().toString(36).slice(2, 6);
-  const base = db.collection("emailSnapshots").doc(version), docs = S.buildDocs(parsed);
+  const base = db.collection("emailSnapshots").doc(version);
+  let docs;
   let staged = false, live = false;
   try {
-    let li = step("Creating version " + version);
+    let li = step("Linking ticks saved by older app versions");
+    docs = S.buildDocs(parsed, await currentLegacyMap()); li.textContent = "✓ Older ticks linked by content";
+    li = step("Creating version " + version);
     await base.set({ status: "staging", asOf: report.asOf, createdAt: FV.serverTimestamp(), createdBy: user.email, createdByUid: user.uid,
       sourceFile: fileName.slice(0, 200), counts: report.counts, warnings: report.warnings.slice(0, 20), engine: "publisher-2.12" });
     staged = true; li.textContent = "✓ Version " + version + " created";
@@ -215,6 +215,14 @@ $("publish").onclick = async () => {
     msg("pubMsg", (live ? "Published, but a later step failed: " : "Publish stopped. The live snapshot was NOT changed. ") + friendly(e), "bad");
   } finally { busy = false; await load(); await loadVersions(); setButtons(); }
 };
+
+/** Old ticks/updates use index IDs (email-action-001…). Match them by content to the new records so they stay on the right item. */
+async function currentLegacyMap(){
+  if (liveMeta && liveMeta.version) return S.legacyIdMap(null, await readVersion(liveMeta.version));
+  const [p, a] = await Promise.all([db.collection("emailSnapshotProjects").get(), db.collection("emailSnapshotActions").get()]);
+  const rows = s => s.docs.slice().sort((x, y) => x.id.localeCompare(y.id)).map(d => d.data());
+  return S.legacyIdMap({ projects: rows(p), actions: rows(a) }, null);
+}
 
 /* ---------- versions and rollback ---------- */
 async function loadVersions(){
@@ -236,8 +244,11 @@ document.addEventListener("click", async e => {
   busy = true; b.disabled = true;
   try {
     const vd = (await db.collection("emailSnapshots").doc(v).get()).data();
-    await switchLive(v, liveVersion(liveMeta), { asOf: vd.asOf, counts: vd.counts || { projects: 0, actions: 0, evidence: 0 } }, "snapshot_rolled_back");
-    if ($("mirror").checked) { const rec = await readVersion(v); try { await mirrorLegacy({ projects: rec.projects.sort(byRow), actions: rec.actions.sort(byRow), evidence: rec.evidence.sort(byRow) }); } catch (_) {} }
+    const rec = await readVersion(v), counts = { projects: rec.projects.length, actions: rec.actions.length, evidence: rec.evidence.length };
+    if (vd.counts && (vd.counts.projects !== counts.projects || vd.counts.actions !== counts.actions || vd.counts.evidence !== counts.evidence)) throw new Error("This version's records do not match its saved counts, so it was not made live.");
+    if (!counts.projects) throw new Error("This version has no project records, so it was not made live.");
+    await switchLive(v, liveVersion(liveMeta), { asOf: vd.asOf, counts }, "snapshot_rolled_back");
+    if ($("mirror").checked) { try { await mirrorLegacy({ projects: rec.projects.sort(byRow), actions: rec.actions.sort(byRow), evidence: rec.evidence.sort(byRow) }); } catch (_) {} }
     alert("Version " + v + " is live.");
   } catch (err) { alert("Could not switch: " + friendly(err)); }
   finally { busy = false; await load(); await loadVersions(); }
