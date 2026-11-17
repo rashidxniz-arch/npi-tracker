@@ -1,2 +1,4 @@
 tracker.json
 *.plain.json
+node_modules/
+test-results/

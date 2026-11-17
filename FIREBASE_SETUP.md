@@ -21,6 +21,7 @@ Example user document:
   "displayName": "Rashid",
   "email": "rashid@example.com",
   "role": "admin",
+  "teamKey": "rashid",
   "active": true,
   "createdAt": "server timestamp"
 }
@@ -32,7 +33,9 @@ Supported roles:
 - `member`: team task and progress updates.
 - `viewer`: read-only access (application must enforce read-only UI; Firestore rules remain authoritative).
 
-Never let a user create or edit their own role or active status. Create the Firebase Auth user first, copy its UID, then create the corresponding `users/{uid}` document from the Firebase Console using the project administrator account.
+`teamKey` links the account to its NPI team member (`rashid`, `fadzmi`, `liyana`, `yusri`, `zul`, `fakrul`, `wajdi`, `shamsuri`). From rules v2.12 every write must be signed with the caller's own `teamKey`, so set it on every user document before deploying those rules (see `docs/DEPLOYMENT.md`).
+
+Never let a user create or edit their own role, team key or active status. Create the Firebase Auth user first, copy its UID, then create the corresponding `users/{uid}` document from the Firebase Console using the project administrator account.
 
 ## Firebase Console setup
 

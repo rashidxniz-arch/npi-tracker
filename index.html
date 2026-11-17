@@ -316,6 +316,88 @@ table.wl td.n.hot{color:var(--bad);font-weight:600}
 footer.site .exzone{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding-top:10px}
 footer.site .exzone img{height:34px;width:auto}
 footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spacing:.06em;color:var(--navy);font-size:13px;text-transform:uppercase;text-align:center}
+
+/* ── Projects Gantt (v2.13) — same visual language as NPI Project Planner's Portfolio view ── */
+.gt-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.gt-tools .btn{padding:6px 11px;font-size:13px}
+.gt-gb{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-3);margin-left:auto}
+.gt-gb .field{padding:5px 8px;font-size:13px}
+.gt-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink-3);margin:0 0 8px}
+.gt-legend span{display:inline-flex;align-items:center;gap:6px}
+.gt-k{display:inline-block;position:relative}
+.gt-k.bar{width:22px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--navy) 45%,var(--blue) 45%)}
+.gt-k.ms,.gt-k.mt{width:9px;height:9px;transform:rotate(45deg);background:var(--ink)}
+.gt-k.ms.late{background:var(--bad)} .gt-k.mt{background:#7A3FD1}
+.gt-k.em{width:2px;height:12px;background:var(--ink-2)} .gt-k.po{width:7px;height:7px;border-radius:50%;background:#fff;border:2px solid var(--blue)}
+.gt-k.pd{width:0;height:12px;border-left:2px dashed var(--bad)} .gt-k.td{width:2px;height:12px;background:#F08A00}
+.gt{--gl:600px;position:relative;overflow:auto;max-height:calc(100vh - 230px);min-height:260px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:13px}
+.gt-row{display:flex;width:max-content;min-width:100%;border-bottom:1px solid var(--line-2);position:relative}
+.gt-l{position:sticky;left:0;z-index:3;flex:none;width:var(--gl);display:grid;grid-template-columns:28px 20px minmax(0,1fr) 64px 78px 82px 64px 40px;align-items:center;gap:0 6px;padding:0 8px;background:#fff;border-right:1px solid var(--line);min-height:34px}
+.gt-r{position:relative;flex:none;height:34px}
+.gt-head{position:sticky;top:0;z-index:5;background:var(--sunk);border-bottom:1px solid var(--line)}
+.gt-head .gt-l{background:var(--sunk);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);min-height:46px}
+.gt-head .gt-r{height:46px}
+.gt-months,.gt-ticks{position:absolute;left:0;right:0;height:23px}
+.gt-months{top:0;border-bottom:1px solid var(--line)} .gt-ticks{top:23px}
+.gt-m{position:absolute;top:0;height:23px;line-height:23px;padding-left:6px;border-left:1px solid var(--line);font-weight:600;color:var(--navy);white-space:nowrap;font-size:12px}
+.gt-w,.gt-d{position:absolute;top:0;height:23px;line-height:23px;padding-left:4px;border-left:1px solid var(--line-2);font-family:var(--mono);font-size:10.5px;color:var(--ink-3);white-space:nowrap}
+.gt-d{padding:0;text-align:center} .gt-d.we{background:#E4ECF6}
+.gt-body{position:relative}
+.gt-bg{position:absolute;top:0;bottom:0;left:var(--gl);pointer-events:none;z-index:0}
+.gt-we{position:absolute;top:0;bottom:0;background:rgba(9,38,93,.035)}
+.gt-today{position:absolute;top:0;bottom:0;width:0;border-left:2px solid #F08A00;z-index:2}
+.gt-n{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:right}
+.gt-tg{border:0;background:none;padding:0;width:20px;height:20px;cursor:pointer;color:var(--ink-2);font-size:12px;border-radius:3px}
+button.gt-tg:hover{background:var(--blue-soft)}
+.gt-name{display:flex;flex-direction:column;min-width:0;line-height:1.2;padding:4px 0}
+.gt-name b,.gt-name>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.gt-name small{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gt-name .tag{font-size:9.5px;padding:0 4px;margin-left:4px}
+.gt-c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+.gt-c .pill{font-size:10px;padding:1px 6px}
+.gt-act{text-align:right;font-family:var(--mono)}
+.gt-mute{color:var(--ink-3)}
+.gt-row[data-pid]{cursor:pointer}
+.gt-row[data-pid]:hover .gt-l,.gt-row[data-pid]:focus-visible .gt-l{background:var(--blue-softer)}
+.gt-row[data-pid]:hover{background:var(--blue-softer)}
+.gt-row[data-pid]:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.gt-grp .gt-l{display:block;background:var(--bg);padding:8px 10px;min-height:0;font-size:13px}
+.gt-grp .gt-l b{color:var(--navy);font-family:var(--display)}
+.gt-grp{background:var(--bg)}
+.gt-grp .gt-r{height:auto}
+.gt-bracket{position:absolute;top:50%;height:7px;margin-top:-3px;background:var(--ink);border-radius:1px}
+.gt-bracket::before,.gt-bracket::after{content:"";position:absolute;top:0;width:0;height:0;border-top:7px solid var(--ink)}
+.gt-bracket::before{left:0;border-right:6px solid transparent;transform:translateY(7px)}
+.gt-bracket::after{right:0;border-left:6px solid transparent;transform:translateY(7px)}
+.gt-bar{position:absolute;top:9px;height:16px;border-radius:3px;z-index:1;cursor:pointer;background:color-mix(in srgb,var(--hc,var(--blue)) 30%,#fff);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--hc,var(--blue)) 55%,#fff)}
+.gt-bar.h-ok{--hc:var(--ok)} .gt-bar.h-warn{--hc:var(--warn)} .gt-bar.h-bad{--hc:var(--bad)}
+.gt-bar b{position:absolute;left:0;top:0;bottom:0;border-radius:3px 0 0 3px;background:color-mix(in srgb,var(--hc,var(--navy)) 80%,#000)}
+.gt-lbl{position:absolute;top:9px;line-height:16px;font-size:11.5px;color:var(--ink-2);white-space:nowrap;z-index:1;pointer-events:none}
+.gt-none{position:absolute;left:12px;top:9px;line-height:16px;font-size:11.5px;color:var(--ink-3);font-style:italic}
+.gt-em{position:absolute;top:7px;height:20px;width:2px;margin-left:-1px;background:var(--ink-2);z-index:2;opacity:.75}
+.gt-em::after{content:"";position:absolute;left:-4px;right:-4px;top:0;bottom:0}
+.gt-po{position:absolute;top:12px;width:9px;height:9px;margin-left:-5px;border-radius:50%;background:#fff;border:2px solid var(--blue);z-index:2;box-sizing:border-box}
+.gt-ms,.gt-mt{position:absolute;top:11px;width:11px;height:11px;margin-left:-5px;transform:rotate(45deg);background:var(--ink);z-index:2;border:1px solid #fff}
+.gt-mt{background:#7A3FD1}
+.gt-ms.late{background:var(--bad)} .gt-ms.done{background:var(--ink-3);opacity:.55}
+.gt-pd{position:absolute;top:3px;bottom:3px;width:0;border-left:2px dashed var(--bad);z-index:2}
+.gt-pd::after{content:"";position:absolute;left:-5px;width:8px;top:0;bottom:0}
+.gt-sub .gt-l{background:#FBFDFF}
+.gt-sub .gt-name>span{font-weight:400;color:var(--ink-2);font-size:12.5px;padding-left:4px}
+.gt-sub .gt-name small{padding-left:4px}
+.gt-sub.done .gt-name>span{color:var(--ink-3);text-decoration:line-through}
+.gt-sub .gt-r,.gt-sub .gt-l{min-height:30px;height:30px}
+.gt-sub .gt-ms{top:9px} .gt-sub .gt-lbl{top:7px;font-family:var(--mono);font-size:10.5px}
+.gt-note{font-size:12px;color:var(--ink-3);margin:8px 2px 0}
+.gt-tip{position:fixed;z-index:60;max-width:320px;background:var(--navy);color:#fff;font-size:12px;line-height:1.35;padding:7px 9px;border-radius:6px;box-shadow:0 6px 18px rgba(9,38,93,.25);pointer-events:none}
+.gt-tip b{color:#fff} .gt-tip i{color:#BFD7FF}
+@media (max-width:900px){
+  .gt{--gl:250px;max-height:none}
+  .gt-l{grid-template-columns:22px 18px minmax(0,1fr) 70px}
+  .gt-own,.gt-stg,.gt-due,.gt-act{display:none}
+  .gt-gb{margin-left:0}
+}
+@media print{.gt{max-height:none;overflow:visible}.gt-tools{display:none}}
 </style>
 </head>
 <body>
@@ -352,7 +434,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
         <div class="menu">
           <button class="namebtn" type="button" id="meBtn" aria-haspopup="true" aria-expanded="false"></button>
           <div class="dropdown" id="meMenu" hidden>
-            <div><label class="eyebrow" for="whoami">I am</label><select class="field" id="whoami"></select></div>
+            <div><label class="eyebrow" for="whoami">Signed in as</label><select class="field" id="whoami"></select></div>
             <div class="stamp">Tracker updated <b id="syncStamp">—</b><div id="covStamp" style="margin-top:2px"></div></div>
             <div class="sep"></div>
             <button class="mi" type="button" id="refresh">Refresh now</button>
@@ -419,7 +501,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
             <div class="search"><input class="field" type="search" id="q" placeholder="Search project, customer, part…" aria-label="Search projects"></div>
             <select class="field" id="hFilter" aria-label="Health"><option value="">All status</option><option value="bad">At risk</option><option value="warn">Watch</option><option value="ok">On track</option></select>
             <select class="field" id="sFilter" aria-label="Stage"></select>
-            <div class="seg" role="group" aria-label="Layout"><button type="button" data-layout="cards">Cards</button><button type="button" data-layout="table">Table</button></div>
+            <div class="seg" role="group" aria-label="Layout"><button type="button" data-layout="gantt">Gantt</button><button type="button" data-layout="cards">Cards</button><button type="button" data-layout="table">Table</button></div>
           </div>
         </div>
         <div class="filters" role="group" aria-label="Filter by team member" data-filters></div>
@@ -498,8 +580,8 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     <section id="v-email-intel" data-v="email-intel" hidden>
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="pagehead">
-          <div><h1>Email Intelligence</h1><p>Read-only Outlook-derived project summaries, actions and supporting email evidence.</p></div>
-          <button class="btn primary" type="button" id="emailRefresh">Refresh snapshot</button>
+          <div><h1>Email Intelligence</h1><p>Read-only summaries from the last email snapshot that was prepared from Outlook and published by an admin. Reloading shows the latest published snapshot; it does not read new Outlook email.</p></div>
+          <button class="btn primary" type="button" id="emailRefresh">Reload published snapshot</button>
         </div>
         <div class="kpis ei-kpis" id="emailIntelMeta"></div>
         <p class="sub" id="emailIntelSummary">Loading snapshot information…</p>
@@ -518,7 +600,7 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
     </section>
 
     <footer class="site">
-      <span><b id="verFoot"></b> · Project status is updated each weekday by Rashid's Claude from Outlook. Updates you post on a project show under it straight away and are folded into its status at the next refresh. Please don't post HR or personal matters.</span>
+      <span><b id="verFoot"></b> · Project status comes from the latest email snapshot published by Rashid (see the date in your name menu). Updates you post on a project show under it straight away. Please don't post HR or personal matters.</span>
       <div class="exzone"><img src="icons/exzone-logo.png" alt="Exzone" onerror="this.remove()"><span>EXZONE Precision Engineering Sdn. Bhd. · NPI team</span></div>
     </footer>
   </main>
@@ -544,6 +626,8 @@ footer.site .exzone span{font-family:var(--display);font-weight:600;letter-spaci
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
+<script src="lib/snapshot.js"></script>
 <script src="app.js"></script>
+<script src="gantt.js"></script>
 </body>
 </html>

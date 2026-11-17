@@ -12,7 +12,8 @@ const fmtDate = s => { const d=dt(s); return isNaN(d) ? "" : `${DOW[d.getDay()]}
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` }
 const store = { get(k){ try{return localStorage.getItem(k)||""}catch(e){return ""} }, set(k,v){ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k) }catch(e){} } };
 
-let code = "", me = store.get("npi-me"), currentProfile = null;
+let code = "", me = "", currentProfile = null, lastLoadAt = 0;
+const S = window.NPISnapshot;
 const firebaseConfig = window.NPI_CONFIG && window.NPI_CONFIG.firebase;
 if (firebaseConfig && window.firebase && !firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const firebaseAuth = window.firebase ? firebase.auth() : null;
@@ -36,91 +37,58 @@ async function loadTracker(pass){
   try { return await decrypt(enc, pass); } catch(e){ throw new Error("badcode"); }
 }
 
-/* ---------- Firestore read-only dashboard preview ---------- */
+/* ---------- Firestore data ---------- */
 const FIRESTORE_READ_ONLY = false;
+const CORE_COLLECTIONS = ["projects","tasks","team"];
+const OPTIONAL_COLLECTIONS = ["meetings","status","updates","workload"];
+const byRow = (a,b)=>(Number(a.rowNumber)||0)-(Number(b.rowNumber)||0) || String(a.docId).localeCompare(String(b.docId));
+async function getAll(name){ const snap=await firestore.collection(name).get(); return snap.docs.map(doc=>({docId:doc.id,...doc.data()})); }
+/** Reads the published email snapshot. Versioned layout (emailSnapshots/{version}/…) when the pointer has a version; otherwise the legacy flat collections. */
+async function loadSnapshot(){
+  const metaSnap=await firestore.collection("emailSnapshotMeta").doc("current").get();
+  const meta=metaSnap.exists?{docId:metaSnap.id,...metaSnap.data()}:null;
+  if(!meta) return {meta:null,projects:[],actions:[],evidence:[]};
+  let parts;
+  if(meta.version){
+    const base=firestore.collection("emailSnapshots").doc(String(meta.version));
+    parts=await Promise.all(["projects","actions","evidence"].map(n=>base.collection(n).get().then(sn=>sn.docs.map(d=>({docId:d.id,...d.data()})))));
+  } else {
+    parts=await Promise.all(["emailSnapshotProjects","emailSnapshotActions","emailSnapshotEvidence"].map(getAll));
+  }
+  return {meta,projects:parts[0].sort(byRow),actions:parts[1].sort(byRow),evidence:parts[2].sort(byRow)};
+}
 async function loadFirestoreData(){
   if(!firestore || !firebaseAuth || !firebaseAuth.currentUser) throw new Error("Firebase session is not available.");
-  const names=["projects","tasks","meetings","status","updates","workload","team","emailSnapshotProjects","emailSnapshotActions","emailSnapshotEvidence","emailSnapshotMeta"];
-  const snaps=await Promise.all(names.map(n=>firestore.collection(n).get()));
-  const data={}; names.forEach((n,i)=>data[n]=snaps[i].docs.map(doc=>({docId:doc.id,...doc.data()})));
+  const names=CORE_COLLECTIONS.concat(OPTIONAL_COLLECTIONS);
+  const [settled, snapRes]=await Promise.all([Promise.allSettled(names.map(getAll)), loadSnapshot().then(v=>({ok:true,v}),e=>({ok:false,e}))]);
+  const data={}, warnings=[];
+  names.forEach((n,i)=>{
+    const r=settled[i];
+    if(r.status==="fulfilled") data[n]=r.value;
+    else if(CORE_COLLECTIONS.includes(n)) throw new Error("Could not load "+n+": "+(r.reason&&r.reason.message||"permission or network error"));
+    else { data[n]=[]; warnings.push(n); console.warn("Optional collection failed",n,r.reason); }
+  });
+  const snap=snapRes.ok?snapRes.v:{meta:null,projects:[],actions:[],evidence:[]};
+  if(!snapRes.ok){ warnings.push("email snapshot"); console.warn("Snapshot load failed",snapRes.e); }
   const team={};
-  data.team.forEach(x=>{const k=String(x.key||x.docId).toLowerCase();team[k]={...x,...(x.key?{}:{key:k})};});
-  const meta=data.emailSnapshotMeta.find(x=>x.docId==="current");
-  let projects, actions, teamTasks;
-  if(meta && data.emailSnapshotProjects.length){
-    const ownerKey = raw => {
-      const v=String(raw||"").toLowerCase();
-      if(/fadzmi/.test(v)) return "fadzmi";
-      if(/liyana/.test(v)) return "liyana";
-      if(/yusri/.test(v)) return "yusri";
-      if(/zul/.test(v)) return "zul";
-      if(/fakrul/.test(v)) return "fakrul";
-      if(/wajdi/.test(v)) return "wajdi";
-      if(/shamsuri/.test(v)) return "shamsuri";
-      return "rashid";
-    };
-    const stageOf = x => {
-      const v=(String(x.Workstream||"")+" "+String(x["Latest Status"]||"")).toLowerCase();
-      if(/release|production|certif|submission/.test(v)) return 5;
-      if(/build|pilot|shipment|sample|po received/.test(v)) return 4;
-      if(/trial|fai|measurement|doe|validation|is ir|is ir/.test(v)) return 3;
-      if(/tool|jig|mold|mould/.test(v)) return 2;
-      if(/dfm|design|gerber|artwork|eco|regulatory/.test(v)) return 1;
-      return 0;
-    };
-    const healthOf = x => {
-      const v=String(x["Latest Status"]||"").toLowerCase();
-      return /risk|delay|paused|gated|urgent|challenged|not feasible|blocked/.test(v) ? "bad" :
-        /watch|pending|review|waiting|planned|open|not confirmed|quotation|review mostly/.test(v) ? "warn" : "ok";
-    };
-    const isoDate = raw => {
-      const v=String(raw||"");
-      const m=v.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(2026)/i);
-      if(m){const months=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];return "2026-"+String(months.indexOf(m[2].toLowerCase())+1).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0");}
-      return "";
-    };
-    projects=data.emailSnapshotProjects.map((x,i)=>({
-      id:"email-project-"+String(i+1).padStart(3,"0"),
-      name:String(x["Project / Programme"]||"Unnamed project"),
-      customer:String(x.Customer||""),
-      owner:ownerKey(x["Mentioned Owner / Contact"]),
-      stage:stageOf(x),health:healthOf(x),
-      healthLabel:healthOf(x)==="bad"?"At risk":healthOf(x)==="warn"?"Watch":"On track",
-      update:String(x["Latest Evidence / Update"]||""),
-      next:String(x["Next Action"]||""),
-      due:isoDate(x["Latest Email Date"]),
-      asap:/urgent|at risk|gated/i.test(String(x["Latest Status"]||"")),
-      updatedAt:isoDate(x["Latest Email Date"]),
-      complexity:/critical|paused|EOL|firmware/i.test(String(x["Risk / Notes"]||""))?"high":"normal",
-      escalation:healthOf(x)==="bad",
-      activities:[String(x.Workstream||""),String(x["Next Action"]||"")].filter(Boolean),
-      emailDate:String(x["Latest Email Date"]||""),
-      riskNotes:String(x["Risk / Notes"]||""),
-      evidence:String(x["Latest Evidence / Update"]||"")
-    }));
-    const projectFor = raw => projects.find(p=>p.name.toLowerCase().includes(String(raw||"").toLowerCase()) || String(raw||"").toLowerCase().includes(p.name.toLowerCase().split(" – ")[0])) || projects.find(p=>String(raw||"").toLowerCase().includes(p.name.toLowerCase().split(" ")[0])) || null;
-    actions=data.emailSnapshotActions.map((x,i)=>{
-      const p=projectFor(x.Project);
-      const state=String(x["Latest State"]||"").toLowerCase();
-      return {id:"email-action-"+String(i+1).padStart(3,"0"),source:"email-snapshot",src:"claude",
-        text:String(x.Action||""),owner:ownerKey(x["Mentioned Owner / Team"]),
-        tag:String(x.Project||""),project:p?p.id:"",
-        urgent:/urgent|critical|at risk|blocked/i.test(state+" "+String(x["Evidence / Notes"]||"")),
-        done:/done|complete|closed|accepted|shipped|submitted/i.test(state),
-        createdAt:"2026-10-30T00:00:00.000Z",emailState:String(x["Latest State"]||""),
-        dueText:String(x["Due / Target"]||""),evidence:String(x["Evidence / Notes"]||"")};
-    });
-    teamTasks=[];
+  data.team.forEach(x=>{const k=String(x.key||x.docId).toLowerCase();team[k]={...x,key:k};});
+  const meta=snap.meta;
+  let projects, actions;
+  if(meta && snap.projects.length){
+    const mapped=S.mapSnapshot({projects:snap.projects,actions:snap.actions},Object.fromEntries(Object.entries(team).filter(([k])=>ACTIVE_TEAM.has(k))),{legacyIndex:!meta.version});
+    projects=mapped.projects; actions=mapped.actions;
   } else {
     projects=data.projects.map(x=>({...x,id:x.id||x.docId}));
     actions=data.tasks.filter(x=>x.source==="tracker").map(x=>({...x,id:x.id||x.docId}));
-    teamTasks=data.tasks.filter(x=>x.source==="google-sheets").map(x=>({...x,id:x.id||x.docId}));
   }
-  D={projects,actions,meetings:data.meetings.map(x=>({...x,id:x.id||x.docId})),team,lastSync:"",coverage:null,
-    emailIntel:{projects:data.emailSnapshotProjects,actions:data.emailSnapshotActions,evidence:data.emailSnapshotEvidence,meta:meta||null}};
+  // Team-created tasks are always kept, whichever project source is active.
+  const teamTasks=data.tasks.filter(x=>x.source==="google-sheets").map(x=>({...x,id:x.id||x.docId,source:"team"}));
+  D={projects,actions,meetings:data.meetings.map(x=>({...x,id:x.id||x.docId})),team,
+    lastSync:meta&&meta.asOf?String(meta.asOf):"",snapshotMeta:meta,coverage:null,loadWarnings:warnings,
+    emailIntel:{projects:snap.projects,actions:snap.actions,evidence:snap.evidence,meta:meta||null}};
   TD={ok:true,tasks:teamTasks,status:data.status,updates:data.updates,effort:data.workload};
-  teamOk=true;
-  return {projects:projects.length,actions:actions.length,teamTasks:teamTasks.length,meetings:D.meetings.length,status:TD.status.length,updates:TD.updates.length,team:data.team.length,snapshot:!!meta};
+  teamOk=warnings.length===0; lastLoadAt=Date.now();
+  return {projects:projects.length,actions:actions.length,teamTasks:teamTasks.length,meetings:D.meetings.length,status:TD.status.length,updates:TD.updates.length,team:data.team.length,snapshot:!!meta,warnings};
 }
 async function loadTeam(){
   if(FIRESTORE_READ_ONLY){ await loadFirestoreData(); return; }
@@ -139,7 +107,10 @@ async function auditEvent(action, entityId, details){
   const uid=firebaseAuth.currentUser.uid;
   await firestore.collection("auditLogs").add({actorUid:uid,actor:me,action,entityId:String(entityId),details:details||{},at:firebase.firestore.FieldValue.serverTimestamp()});
 }
+function canRemove(x){ const uid=firebaseAuth&&firebaseAuth.currentUser&&firebaseAuth.currentUser.uid; return canWrite() && (currentProfile.role==="admin" || x.createdByUid===uid || x.owner===me); }
+function canWrite(){ return !!(currentProfile && currentProfile.active===true && me && String(currentProfile.role||"member")!=="viewer"); }
 async function send(payload, okMsg){
+  if(currentProfile && !canWrite()){ toast("Your account is read-only."); return false; }
   if(!firebaseAuth || !firebaseAuth.currentUser || !currentProfile || currentProfile.active!==true){ toast("Your active Firebase session is required."); return false; }
   if(!me || !ACTIVE_TEAM.has(me)){ toast("Your NPI team profile is not recognised."); return false; }
   const uid=firebaseAuth.currentUser.uid, now=new Date().toISOString();
@@ -153,6 +124,7 @@ async function send(payload, okMsg){
       batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:"task_created",entityId:id,details:{owner,text},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
     }else if(payload.op==="setDone"){
       const id=String(payload.id||""), action=allActions().find(x=>x.id===id); if(!action) throw new Error("Task not found. Refresh and try again.");
+      if(action.src==="claude" && action.source==="email-snapshot" && !/^ea-/.test(id)) throw new Error("This action has no stable ID. Ask Rashid to republish the snapshot.");
       const batch=firestore.batch(); batch.set(firestore.collection("status").doc(id),{id,done:!!payload.done,by:me,at:now,actorUid:uid},{merge:true});
       batch.set(firestore.collection("auditLogs").doc(),{actorUid:uid,actor:me,action:payload.done?"task_completed":"task_reopened",entityId:id,details:{owner:action.owner},at:firebase.firestore.FieldValue.serverTimestamp()}); await batch.commit();
     }else if(payload.op==="reassignTask"){
@@ -188,10 +160,12 @@ function allActions(){
   const st = statusMap();
   const claude = (D.actions||[]).map(a=>({...a, src:"claude"}));
   const team = (TD.tasks||[]).map(t=>({...t, src:"team"}));
-  return claude.concat(team).map(a=>{ const s=st[a.id]; return {...a, done: s ? !!s.done : !!a.done, doneBy: s ? s.by : a.doneBy}; });
+  return claude.concat(team).map(a=>{ const s=st[a.id] || (a.legacyId && st[a.legacyId]); return {...a, done: s ? !!s.done : !!a.done, doneBy: s ? s.by : a.doneBy}; });
 }
+function projById(id){ return id ? D.projects.find(p=>p.id===id || p.legacyId===id) : null; }
+function sameProject(ref, pid){ if(!ref) return false; if(ref===pid) return true; const p=projById(pid); return !!(p && p.legacyId && p.legacyId===ref); }
 function latestNote(pid, after){
-  return (TD.updates||[]).filter(u=>u.project===pid && (!after || u.at > after)).sort((a,b)=>b.at.localeCompare(a.at))[0];
+  return (TD.updates||[]).filter(u=>sameProject(u.project,pid) && (!after || u.at > after)).sort((a,b)=>b.at.localeCompare(a.at))[0];
 }
 function ownerOptions(sel, withBlank){ return (withBlank?`<option value="">— Choose your name —</option>`:"") + teamKeys().map(k=>`<option value="${k}" ${k===sel?"selected":""}>${esc(T(k).name)}</option>`).join("") }
 
@@ -201,30 +175,33 @@ const VIEWS = ["summary","projects","actions","calendar","workload","updates","e
 const HL = {ok:"On track", warn:"Watch", bad:"At risk"};
 const HORDER = {bad:0, warn:1, ok:2};
 let view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : (store.get("npi-view") || "summary");
-let layout = store.get("npi-layout") || "cards";
+let layout = store.get("npi-layout") || (window.matchMedia && matchMedia("(min-width: 900px)").matches ? "gantt" : "cards");
 let aShow = "open", q = "", hF = "", sF = "", sortK = "", sortDir = 1;
 let emailQuery = "", emailCustomer = "", emailRisk = "";
 let desk = store.get("npi-desk") === "1";
 const addDays = (iso, n) => { const d = new Date(dt(iso).getTime()+n*864e5); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
-const pname = id => (D.projects.find(p=>p.id===id)||{}).name;
+const pname = id => (projById(id)||{}).name;
 
 /* ---------- render ---------- */
 function render(){
-  $("whoami").innerHTML = ownerOptions(me, true);
+  $("whoami").innerHTML = ownerOptions(me, true); $("whoami").disabled = true;
   const mb = $("meBtn"); mb.classList.toggle("need", !me);
   mb.innerHTML = me ? `${av(me)}<span class="nm">${esc(T(me).short)}</span>` : `<span class="nm">Choose name</span>`;
-  $("syncStamp").textContent = D.lastSync ? `${fmtDate(D.lastSync)} ${D.lastSync.slice(11,16)}` : "—";
-  const cv = D.coverage;
-  $("covStamp").textContent = cv ? `Read ${cv.inbox} inbox + ${cv.sent} sent emails since ${fmtDate(cv.from)}` : "";
-  $("covLine").textContent = cv ? `Team posts and project emails · last refresh read every email since ${fmtDate(cv.from)} (${cv.inbox} inbox, ${cv.sent} sent; ${cv.skipped} skipped as ${cv.note})` : "Team posts and project emails";
+  const sm = D.snapshotMeta;
+  $("syncStamp").textContent = D.lastSync ? fmtDate(D.lastSync) : "—";
+  $("covStamp").textContent = sm ? `Email snapshot: ${D.projects.length} projects · ${(sm.actionCount ?? (D.emailIntel.actions||[]).length)} actions · published ${publishedText(sm)}` : "No email snapshot published yet";
+  $("covLine").textContent = "Team posts and project emails" + (D.lastSync ? ` · email snapshot as of ${fmtDate(D.lastSync)}` : "");
   const ao = $("actOwner").value; $("actOwner").innerHTML = ownerOptions(ao || me || (filter!=="all"?filter:"rashid"), false);
   const pp = $("postProj").value;
   $("postProj").innerHTML = projOptions(pp);
   if(!$("sFilter").options.length) $("sFilter").innerHTML = `<option value="">All stages</option>` + STAGES.map((s,i)=>`<option value="${i}">${s}</option>`).join("");
-  const b = $("banner");
-  if(!teamOk){ b.hidden=false; b.className="banner warn"; b.textContent="Couldn't reach the team list. Showing the last saved copy; tasks and ticks may be out of date."; }
-  else b.hidden=true;
-  document.querySelectorAll("#actForm button,#postForm button").forEach(x=>x.disabled=FIRESTORE_READ_ONLY);
+  const b = $("banner"), msgs = [], age = snapshotAgeDays();
+  if((D.loadWarnings||[]).length) msgs.push(`Some data could not be loaded (${D.loadWarnings.join(", ")}). Ticks, updates or hours may be missing — use Refresh now.`);
+  if(age!==null && age>7) msgs.push(`The email snapshot is ${age} days old (as of ${fmtDate(D.lastSync)}). Projects and email actions may be out of date until a newer snapshot is published.`);
+  if(currentProfile && !me) msgs.push("Your account is not linked to a team member yet, so you can view but not change anything. Ask Rashid to set teamKey on your profile.");
+  else if(currentProfile && !canWrite()) msgs.push("Your account is read-only: you can view everything but cannot add or change tasks.");
+  if(msgs.length){ b.hidden=false; b.className="banner warn"; b.textContent=msgs.join(" "); } else b.hidden=true;
+  document.querySelectorAll("#actForm button,#postForm button,#actForm input,#actForm select,#postForm textarea,#postForm select").forEach(x=>x.disabled=!canWrite());
   const acts = allActions();
   $("nProj").textContent = D.projects.length;
   const nOpen = acts.filter(a=>!a.done && (!me || a.owner===me)).length;
@@ -232,6 +209,8 @@ function render(){
   $("nAct").classList.toggle("bad", acts.some(a=>!a.done && a.urgent && (!me || a.owner===me)));
   renderFilters(); renderKpis(); renderDash(); renderPeople(); renderProjects(); renderActions(); renderMeetings(); renderFeed(); renderWorkload(); renderEmailIntel(); renderView();
 }
+function snapshotAgeDays(){ if(!D || !D.lastSync) return null; const d=dt(D.lastSync); return isNaN(d) ? null : Math.floor((dt(todayISO())-d)/864e5); }
+function publishedText(m){ const v=m && m.publishedAt; if(!v) return "date unknown"; const d=v.toDate?v.toDate():new Date(v); return isNaN(d)?String(v):d.toLocaleString("en-GB",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}); }
 function projOptions(sel){
   return `<option value="">General update (no project)</option>` + D.projects.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${esc(p.id)}" ${p.id===sel?"selected":""}>${esc(p.name)}</option>`).join("");
 }
@@ -292,6 +271,7 @@ function renderProjects(){
   const list = projList(), total = D.projects.filter(x=>match(x.owner)).length;
   $("projCount").textContent = list.length===total ? `${total} active project${total===1?"":"s"}${filter!=="all"?" for "+T(filter).short:""}` : `${list.length} of ${total} shown`;
   if(!list.length){ $("projects").innerHTML = `<div class="panel empty">No projects match. ${filter!=="all"?"Try “Whole team”, or post":"Post"} an update and Rashid's Claude will add new ones.</div>`; return; }
+  if(layout==="gantt" && typeof renderGantt==="function"){ renderGantt(list); return; }
   if(layout==="table"){
     const th = (k,l) => `<th data-sort="${k}" class="${sortK===k?(sortDir>0?"asc":"desc"):""}" scope="col">${l}</th>`;
     $("projects").innerHTML = `<div class="tbl-wrap"><table class="reg"><thead><tr>${th("name","Project")}${th("customer","Customer")}${th("owner","Owner")}${th("stage","Stage")}${th("health","Status")}<th scope="col">Next step</th>${th("due","Due")}</tr></thead><tbody>${
@@ -314,9 +294,9 @@ function renderProjects(){
 }
 function actionRow(x){
   return `<div class="row ${x.done?"done":""}">
-    <input type="checkbox" class="check" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${x.done?"checked":""} ${FIRESTORE_READ_ONLY?"disabled":""} aria-label="Done">
-    <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${esc(T(x.owner).short)}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}${!x.done&&!FIRESTORE_READ_ONLY?hrsChip(x):""}</div></label>
-    ${x.src==="team"?`<span class="task-tools"><select aria-label="Reassign task" data-reassign-select="${esc(x.id)}">${ownerOptions(x.owner,false)}</select><button class="linkbtn" type="button" data-reassign="${esc(x.id)}">Assign</button><button class="linkbtn" type="button" data-del="${esc(x.id)}" aria-label="Remove task">Remove</button></span>`:"<span></span>"}
+    <input type="checkbox" class="check" id="c-${esc(x.id)}" data-id="${esc(x.id)}" ${x.done?"checked":""} ${canWrite()?"":"disabled"} aria-label="Done">
+    <label for="c-${esc(x.id)}"><div class="t">${esc(x.text)}</div><div class="s">${x.urgent&&!x.done?'<span class="tag bad">Urgent</span>':""}${x.tag?`<span class="tag">${esc(x.tag)}</span>`:""}${x.owner?esc(T(x.owner).short)+(x.ownerInferred?' <span class="tag" title="Matched from the email text: '+esc(x.ownerText)+'">inferred</span>':""):'<span class="tag">Unassigned</span>'}${x.src==="team"&&x.createdBy&&x.createdBy!==x.owner?` · added by ${esc(T(x.createdBy).short)}`:""}${x.done&&x.doneBy?` · done by ${esc(T(x.doneBy).short)}`:""}${x.dueText&&!x.done?` · <span class="mono${x.due&&x.due<todayISO()?" late":""}">due ${esc(x.dueText)}</span>`:""}${!x.done&&canWrite()?hrsChip(x):""}</div></label>
+    ${x.src==="team"&&canWrite()?`<span class="task-tools"><select aria-label="Reassign task" data-reassign-select="${esc(x.id)}">${ownerOptions(x.owner,false)}</select><button class="linkbtn" type="button" data-reassign="${esc(x.id)}">Assign</button>${canRemove(x)?`<button class="linkbtn" type="button" data-del="${esc(x.id)}" aria-label="Remove task">Remove</button>`:""}</span>`:"<span></span>"}
   </div>`;
 }
 function hrsChip(x){ const e=effortMap()[x.id]; const h=e&&+e.hours>0?+e.hours:""; return `<button type="button" class="hrs ${h?"set":""}" data-hrs="${esc(x.id)}" data-cur="${h}" title="Estimated hours to finish">${h?h+"h":"+ hrs"}</button>`; }
@@ -325,8 +305,8 @@ function renderActions(){
     .sort((x,y)=>(!!x.done)-(!!y.done) || (!!y.urgent)-(!!x.urgent) || String(x.createdAt||"").localeCompare(String(y.createdAt||"")));
   if(!list.length){ $("actions").innerHTML = `<div class="empty">${aShow==="done"?"Nothing ticked off yet.":"No open actions."}</div>`; return; }
   if(filter!=="all"){ $("actions").innerHTML = list.map(actionRow).join(""); return; }
-  const groups = teamKeys().map(k=>[k, list.filter(a=>a.owner===k)]).filter(g=>g[1].length);
-  $("actions").innerHTML = groups.map(([k,as])=>`<div class="grp">${esc(T(k).name)} · ${as.length}</div>${as.map(actionRow).join("")}`).join("");
+  const keys = teamKeys(), groups = keys.map(k=>[k, list.filter(a=>a.owner===k)]).concat([["", list.filter(a=>!keys.includes(a.owner))]]).filter(g=>g[1].length);
+  $("actions").innerHTML = groups.map(([k,as])=>`<div class="grp">${k?esc(T(k).name):"Not matched to a team member"} · ${as.length}</div>${as.map(actionRow).join("")}`).join("");
 }
 function renderMeetings(){
   const t = todayISO(), tm = addDays(t,1);
@@ -344,7 +324,7 @@ function renderMeetings(){
 }
 function feedItems(pid){
   return (D.feed||[]).map(f=>({...f})).concat((TD.updates||[]).map(u=>({...u, kind:"post"})))
-    .filter(x=>pid ? x.project===pid : match(x.owner)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+    .filter(x=>pid ? sameProject(x.project,pid) : match(x.owner)).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
 }
 const feedRow = x => { const d=dt(x.at); return `
   <div class="row">${av(x.owner)}
@@ -579,6 +559,9 @@ function emailIntelProjectFor(raw, projects){
     return name===v || name.includes(v) || v.includes(name.split("/")[0].trim());
   }) || null;
 }
+const tx = v => S.text(v);
+const dTxt = v => { const iso=S.parseDate(v); return iso ? fmtDate(iso)+" "+iso.slice(0,4) : tx(v); };
+const srcId = e => tx(e["Source Message ID"]||e["Message ID"]||e["Internet Message ID"]||e["Source Message Hash"]);
 function renderEmailIntel(){
   const intel=(D && D.emailIntel) || {projects:[],actions:[],evidence:[],meta:null};
   const projects=intel.projects||[], actions=intel.actions||[], evidence=intel.evidence||[];
@@ -617,35 +600,35 @@ function renderEmailIntel(){
       (!query||text.includes(query));
   });
   const meta=intel.meta||{};
-  const stamp=meta.asOf||"Not available";
+  const stamp=meta.asOf?fmtDate(meta.asOf):"Not available", age=snapshotAgeDays();
   $("emailIntelMeta").innerHTML=[
     ["Projects",projects.length],["Actions",actions.length],["Evidence",evidence.length],["Snapshot",stamp]
   ].map(([label,value])=>'<div class="kpi"><span class="eyebrow">'+esc(label)+'</span><b>'+esc(value)+'</b><small>'+(label==="Snapshot"?"Published snapshot":"Firestore records")+'</small></div>').join("");
   $("emailIntelSummary").textContent=
-    (meta.publishedAt && meta.publishedAt.toDate ? "Published "+meta.publishedAt.toDate().toLocaleString() :
-      meta.publishedAt ? "Published "+String(meta.publishedAt) : "Publication time unavailable")+
-    (meta.publishedBy?" · by "+meta.publishedBy:"")+
+    (intel.meta ? "Published "+publishedText(meta) : "No snapshot published yet")+
+    (meta.publishedBy?" · by "+meta.publishedBy:"")+(meta.version?" · version "+meta.version:"")+
+    (age!==null&&age>7?" · "+age+" days old — may be out of date":"")+
     " · Showing "+visibleProjects.length+" projects, "+visibleActions.length+" actions and "+visibleEvidence.length+" evidence records.";
   $("emailProjects").innerHTML=visibleProjects.length?visibleProjects.map(p=>{
     const status=String(p["Latest Status"]||"Not specified"), health=emailHealth(status);
     return '<article class="ei-card"><div class="ei-head"><div><span class="eyebrow">'+esc(p.Customer||"Customer not specified")+'</span><h3>'+esc(p["Project / Programme"]||"Unnamed project")+'</h3></div><span class="pill '+health+'">'+esc(status)+'</span></div>'+
       '<p class="ei-copy">'+esc(p["Latest Evidence / Update"]||"No latest update recorded.")+'</p>'+
       '<div class="ei-next"><b>Next action:</b> '+esc(p["Next Action"]||"Not specified")+'</div>'+
-      '<div class="ei-meta"><span>Owner: '+esc(p["Mentioned Owner / Contact"]||"Not specified")+'</span><span>Latest email: '+esc(p["Latest Email Date"]||"—")+'</span><span>Workstream: '+esc(p.Workstream||"—")+'</span></div>'+
+      '<div class="ei-meta"><span>Owner: '+esc(tx(p["Mentioned Owner / Contact"])||"Not specified")+'</span><span>Latest email: '+esc(dTxt(p["Latest Email Date"])||"—")+'</span><span>Workstream: '+esc(tx(p.Workstream)||"—")+'</span></div>'+
       (p["Risk / Notes"]?'<div class="ei-note"><b>Risk / notes:</b> '+esc(p["Risk / Notes"])+'</div>':"")+
       '<div class="ei-id">Record '+esc(p.docId||"—")+'</div></article>';
   }).join(""):'<div class="empty">No project records match these filters.</div>';
   $("emailActions").innerHTML=visibleActions.length?visibleActions.map(a=>{
     const state=String(a["Latest State"]||"Not specified");
     return '<article class="ei-row"><div class="ei-head"><h3>'+esc(a.Action||"Action not specified")+'</h3><span class="pill '+emailHealth(state)+'">'+esc(state)+'</span></div>'+
-      '<div class="ei-meta"><span>Project: '+esc(a.Project||"—")+'</span><span>Owner / team: '+esc(a["Mentioned Owner / Team"]||"—")+'</span><span>Due / target: '+esc(a["Due / Target"]||"—")+'</span></div>'+
+      '<div class="ei-meta"><span>Project: '+esc(tx(a.Project)||"—")+'</span><span>Owner / team: '+esc(tx(a["Mentioned Owner / Team"])||"—")+'</span><span>Due / target: '+esc(dTxt(a["Due / Target"])||"—")+'</span></div>'+
       (a["Evidence / Notes"]?'<p class="ei-copy">'+esc(a["Evidence / Notes"])+'</p>':"")+
       '<div class="ei-id">Record '+esc(a.docId||"—")+'</div></article>';
   }).join(""):'<div class="empty">No action records match these filters.</div>';
   $("emailEvidence").innerHTML=visibleEvidence.length?visibleEvidence.map(e=>
-    '<article class="ei-row"><div class="ei-head"><h3>'+esc(e["Email Subject"]||"Email subject unavailable")+'</h3><span class="eyebrow">'+esc(e["Email Date"]||"Date unavailable")+'</span></div>'+
+    '<article class="ei-row"><div class="ei-head"><h3>'+esc(tx(e["Email Subject"])||"Email subject unavailable")+'</h3><span class="eyebrow">'+esc(dTxt(e["Email Date"])||"Date unavailable")+'</span></div>'+
     '<p class="ei-copy">'+esc(e["Evidence Extract"]||"No extract recorded.")+'</p>'+
-    '<div class="ei-meta"><span>Project: '+esc(e.Project||"—")+'</span><span>Record: '+esc(e.docId||"—")+'</span></div></article>'
+    '<div class="ei-meta"><span>Project: '+esc(tx(e.Project)||"—")+'</span><span>Record: '+esc(e.docId||"—")+'</span>'+(srcId(e)?'<span>Source message: '+esc(srcId(e))+'</span>':'<span title="The workbook has no source message ID column">Source message: not recorded</span>')+'</div></article>'
   ).join(""):'<div class="empty">No email evidence matches these filters.</div>';
 }
 
@@ -670,13 +653,14 @@ function openProject(pid){
       <div><span class="eyebrow">Last update</span><b>${x.updatedAt?esc(fmtDate(x.updatedAt)):"—"}</b></div>
     </div>
     <div>${stageBar(x.stage)}</div>
+    ${x.source==="email-snapshot"?`<p class="conf">From the email snapshot${D.lastSync?" as of "+esc(fmtDate(D.lastSync)):""}${x.lastEmail?" · latest email "+esc(fmtDate(x.lastEmail)):""}. Email status: “${esc(x.statusText||"not stated")}”. Stage and colour are worked out by rules from that text; owner ${x.owner?(x.ownerInferred?"matched from “"+esc(x.ownerText)+"”":""):"not matched to a team member"+(x.ownerText?" (“"+esc(x.ownerText)+"”)":"")}.</p>`:""}
     ${x.update?`<div><h3>Status</h3><p class="txt">${esc(x.update)}</p></div>`:""}
     ${(x.activities||[]).length?`<div><h3>Issue activity <span class="cx ${esc(x.complexity||"low")}" style="vertical-align:1px">${esc((x.complexity||"low").toUpperCase())}</span></h3><p class="txt">${x.activities.map(esc).join(" · ")}${x.threads?` <span class="conf">(${x.threads} email thread${x.threads>1?"s":""})</span>`:""}</p></div>`:""}
     ${x.next?`<div><h3>Next step</h3><p class="txt">${esc(x.next)} ${dueHtml(x)}</p></div>`:""}
     ${meets.length?`<div><h3>Coming up</h3><div class="panel">${meets.map(m=>`<div class="row two"><div class="when">${fmtDate(m.date).split(" ").slice(1).join(" ")}<b>${esc(m.time||"—")}</b></div><div><div class="t">${esc(m.title)}</div><div class="s">${esc(m.sub||"")}</div></div></div>`).join("")}</div></div>`:""}
     ${rel.length?`<div><h3>Related actions</h3><div class="panel" id="popActs">${rel.slice(0,10).map(actionRow).join("")}</div></div>`:""}
     <div><h3>Updates on this project</h3><div class="panel">
-      <form class="addrow" id="popPost" autocomplete="off"><textarea class="field" id="popText" placeholder="Post a progress update on ${esc(x.name)}…" maxlength="600" aria-label="Progress update"></textarea><div class="line"><button class="btn primary" type="submit" ${SCRIPT_URL?"":"disabled"}>Post update</button></div></form>
+      <form class="addrow" id="popPost" autocomplete="off"><textarea class="field" id="popText" placeholder="Post a progress update on ${esc(x.name)}…" maxlength="600" aria-label="Progress update"></textarea><div class="line"><button class="btn primary" type="submit" ${canWrite()?"":"disabled"}>Post update</button></div></form>
       <div class="feed">${notes.length?notes.map(feedRow).join(""):`<div class="empty">No updates yet.</div>`}</div>
     </div></div>`;
   const dlg = $("pop"); if(!dlg.open) dlg.showModal();
@@ -760,8 +744,8 @@ $("sFilter").onchange = e=>{ sF=e.target.value; renderProjects(); };
 $("emailSearch").addEventListener("input",e=>{emailQuery=e.target.value.trim();renderEmailIntel();});
 $("emailCustomer").onchange=e=>{emailCustomer=e.target.value;renderEmailIntel();};
 $("emailRisk").onchange=e=>{emailRisk=e.target.value;renderEmailIntel();};
-$("emailRefresh").onclick=async()=>{const b=$("emailRefresh");b.disabled=true;b.textContent="Refreshing…";try{await loadFirestoreData();render();toast("Email snapshot refreshed");}catch(e){toast("Refresh failed: "+(e.message||"connection error"));}finally{b.disabled=false;b.textContent="Refresh snapshot";}};
-$("whoami").onchange = e=>{ me=e.target.value; store.set("npi-me", me); render(); };
+$("emailRefresh").onclick=async()=>{const b=$("emailRefresh");b.disabled=true;b.textContent="Reloading…";try{await loadFirestoreData();render();toast("Reloaded the published snapshot"+(D.lastSync?" (as of "+fmtDate(D.lastSync)+")":"")+". New Outlook email is not read here.");}catch(e){toast("Reload failed: "+(e.message||"connection error"));}finally{b.disabled=false;b.textContent="Reload published snapshot";}};
+// Identity comes from the signed-in account (users/{uid}.teamKey); it cannot be switched from the menu.
 $("deskBtn").onclick = ()=>{ desk=!desk; store.set("npi-desk-set","1"); store.set("npi-desk", desk?"1":""); renderView(); };
 $("actions").addEventListener("change", async e=>{
   const c = e.target.closest(".check"); if(!c) return;
@@ -781,50 +765,71 @@ $("postForm").onsubmit = async e=>{
   if(await send({op:"post", text, project:$("postProj").value}, "Update posted")) $("postText").value="";
 };
 $("refresh").onclick = async ()=>{ menu(false); try{ await loadFirestoreData(); render(); toast("Firestore data refreshed"); }catch(e){ toast("Refresh failed: "+(e.message||"connection error")); } };
-$("logout").onclick = async ()=>{ store.set("npi-code",""); if(firebaseAuth) await firebaseAuth.signOut().catch(()=>{}); location.reload(); };
+$("logout").onclick = async ()=>{ ["npi-code","npi-me","npi-team-cache"].forEach(k=>store.set(k,"")); if(firebaseAuth) await firebaseAuth.signOut().catch(()=>{}); location.reload(); };
 
 /* ---------- start ---------- */
 document.body.classList.toggle("desk", desk);
+/** Team key for the signed-in account. Only users/{uid}.teamKey counts: the Firestore rules check exactly this field. */
+function profileKey(profile){
+  const k=String(profile.teamKey||"").toLowerCase();
+  return ACTIVE_TEAM.has(k) ? k : "";
+}
 async function open(){
-  // The current tracker is Firestore-backed; the legacy encrypted JSON/passcode is no longer required.
   await loadFirestoreData();
   $("lock").hidden = true; $("app").hidden = false;
   menu(false);
   render();
-  // Firestore is the dashboard read source in this validation release; writes remain disabled.
+}
+let opening=false;
+function lockError(x){
+  const err=$("lockErr"); err.hidden=false;
+  err.textContent = x.code==="auth/invalid-credential" || x.code==="auth/wrong-password" || x.code==="auth/user-not-found"
+    ? "Email or password is incorrect."
+    : x.code==="auth/too-many-requests" ? "Too many attempts. Wait a few minutes, then try again."
+    : x.code==="auth/network-request-failed" ? "No connection. Check your network and try again."
+    : (x.message || "Sign-in failed. Check your connection and try again.");
+}
+async function establish(user){
+  if(opening) return; opening=true;
+  const btn=$("lockBtn"); btn.disabled=true; btn.textContent="Opening NPI Tracker…";
+  try{
+    const profileSnap=await firestore.collection("users").doc(user.uid).get();
+    const deny=m=>Object.assign(new Error(m),{accountProblem:true});
+    if(!profileSnap.exists) throw deny("Your account has no NPI Tracker profile. Ask Rashid to provision it.");
+    const profile=profileSnap.data();
+    if(profile.active!==true) throw deny("Your NPI Tracker account is inactive. Contact Rashid.");
+    currentProfile=profile;
+    me=profileKey(profile);
+    await open();
+  }catch(x){
+    lockError(x); currentProfile=null; me="";
+    // Sign out only when the account itself is not allowed; keep the session for network/load errors so the next visit can retry.
+    if(x && x.accountProblem && firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut().catch(()=>{});
+  }finally{ opening=false; btn.disabled=false; btn.textContent="Sign in"; }
 }
 $("lockForm").onsubmit = async e=>{
   e.preventDefault();
-  const btn=$("lockBtn"), err=$("lockErr");
-  btn.disabled=true; err.hidden=true; btn.textContent="Verifying account…";
+  const btn=$("lockBtn"); $("lockErr").hidden=true;
   try{
     if(!firebaseAuth || !firestore) throw new Error("Firebase SDK is unavailable. Refresh the page and try again.");
-    const email=$("firebaseEmail").value.trim().toLowerCase();
-    const credential=await firebaseAuth.signInWithEmailAndPassword(email,$("firebasePassword").value);
-    const profileSnap=await firestore.collection("users").doc(credential.user.uid).get();
-    if(!profileSnap.exists) throw new Error("Your account has no NPI Tracker profile. Ask Rashid to provision it.");
-    const profile=profileSnap.data();
-    currentProfile=profile;
-    if(profile.active!==true) throw new Error("Your NPI Tracker account is inactive. Contact Rashid.");
-    me=String(profile.name||profile.displayName||email.split("@")[0]).toLowerCase().replace(/[^a-z0-9]+/g,"");
-    btn.textContent="Opening NPI Tracker…";
-    await open();
-  }catch(x){
-    err.hidden=false;
-    err.textContent = x.code==="auth/invalid-credential" || x.code==="auth/wrong-password" || x.code==="auth/user-not-found"
-      ? "Email or password is incorrect."
-      : x.message==="badcode" ? "The existing tracker passcode is incorrect."
-      : (x.message || "Sign-in failed. Check your connection and try again.");
-    currentProfile=null;
-    if(firebaseAuth && firebaseAuth.currentUser) await firebaseAuth.signOut().catch(()=>{});
-  }
-  btn.disabled=false; btn.textContent="Sign in";
+    btn.disabled=true; btn.textContent="Verifying account…";
+    await firebaseAuth.signInWithEmailAndPassword($("firebaseEmail").value.trim().toLowerCase(), $("firebasePassword").value);
+    // onAuthStateChanged below opens the tracker.
+  }catch(x){ lockError(x); btn.disabled=false; btn.textContent="Sign in"; }
 };
-document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && D) loadFirestoreData().then(render).catch(e=>console.warn("Background refresh failed",e)); });
+// Restore an existing session so people don't have to type their password on every visit.
+if(firebaseAuth) firebaseAuth.onAuthStateChanged(u=>{ if(u && $("app").hidden) establish(u); });
+document.addEventListener("visibilitychange", ()=>{
+  if(document.hidden || !D || !firebaseAuth || !firebaseAuth.currentUser) return;
+  if(Date.now()-lastLoadAt < 2*60*1000) return; // at most one background reload every 2 minutes
+  loadFirestoreData().then(render).catch(e=>console.warn("Background refresh failed",e));
+});
 
 /* ---------- version, updates, install ---------- */
-const APP_VERSION = "2.11";
+const APP_VERSION = "2.13";
 const CHANGES = [
+  {v:"2.13", date:"16 Nov 2026", items:["New Gantt layout on the Projects page, in the same style as NPI Project Planner: one timeline for every project, grouped by customer, owner, stage or status","Each bar shows the project's activity window (first email or update to the latest due date or meeting), coloured by status, with the stage reached shaded dark","Action due dates (◆, red when overdue), meetings, emails, team updates and an orange today line","Day / Week / Month zoom, Today and Fit buttons, and ▸ to show a project's actions underneath it","Bars are not a planned schedule — planned dates still live in NPI Project Planner"]},
+  {v:"2.12", date:"16 Nov 2026", items:["Ticks and project updates now stay attached to the right email action after a new snapshot is published","Team-added tasks stay visible when an email snapshot is live","The latest email date is no longer shown as a due date; action due dates come from the snapshot's Due / Target","Owners are only assigned when a team member is named — otherwise shown as Unassigned","Stays signed in between visits; your name comes from your account and can't be switched","Shows how old the email snapshot is and where each project's status came from","Read-only accounts can view but not change data"]},
   {v:"2.11", date:"16 Nov 2026", items:["Added a dedicated read-only Email Intelligence section","Displayed snapshot projects, extracted actions and email evidence from Firestore","Added customer, risk and text filters with snapshot metadata"]},
   {v:"2.10", date:"30 Oct 2026", items:["Removed the obsolete legacy tracker passcode from sign-in","Sign-in now opens directly from the authenticated Firestore account"]},
   {v:"2.9", date:"30 Oct 2026", items:["Unified latest email-derived projects and actions inside the main NPI Tracker","Latest snapshot now becomes the active project and action source after publishing","Kept existing login, team profiles, meetings and historical Firestore collections intact"]},

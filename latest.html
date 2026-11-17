@@ -1,14 +1,278 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Latest Email Snapshot · Exzone NPI</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#0878F9"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap"><style>:root{--n:#09265D;--b:#0878F9;--bg:#F2F7FD;--l:#D5E2F2;--m:#64748B}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px 'IBM Plex Sans',sans-serif;color:#18243A}.top{background:#fff;border-bottom:3px solid var(--n);padding:14px 18px;display:flex;justify-content:space-between}.top a{color:var(--n);text-decoration:none;font-weight:600}.top b,h1,h2,h3{font-family:'IBM Plex Sans Condensed';color:var(--n)}.wrap{max-width:1180px;margin:auto;padding:22px 16px 60px}h1{font-size:30px;margin:0}h2{font-size:20px;margin:0}.sub,.muted{color:var(--m)}.card{background:white;border:1px solid var(--l);border-radius:9px;padding:16px;margin:14px 0}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.field{padding:10px;border:1px solid var(--l);border-radius:6px;font:inherit;min-width:210px}.btn{background:var(--n);color:white;border:0;border-radius:6px;padding:10px 16px;font-weight:600;cursor:pointer}.btn:disabled{opacity:.5}.msg{background:#EAF3FF;padding:10px;border-radius:6px;margin-top:10px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0}.kpi{background:#F5F9FF;border:1px solid var(--l);border-radius:7px;padding:12px}.kpi b{display:block;font:700 26px 'IBM Plex Sans Condensed';color:var(--n)}.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}.item{border-top:1px solid #e7eff8;padding:12px 0}.item h3{margin:0 0 5px;font-size:16px}.tag{font-size:11px;background:#EAF3FF;padding:3px 7px;border-radius:20px;font-weight:600}.hide{display:none!important}@media(max-width:760px){.cols{grid-template-columns:1fr}}</style><script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="config.js"></script></head><body><header class="top"><a href="index.html">← NPI Tracker</a><b>EXZONE · LATEST EMAIL SNAPSHOT</b></header><main class="wrap"><h1>Latest Email Snapshot</h1><p class="sub">Latest email-derived project and action records for the main NPI Tracker.</p><section class="card" id="auth"><h2>Team sign-in</h2><p class="muted">Use your Firebase NPI Tracker account. Publishing is restricted to an active admin.</p><div class="row"><input id="email" class="field" type="email" placeholder="Company email"><input id="password" class="field" type="password" placeholder="Password"><button id="login" class="btn">Sign in</button></div><div id="authMsg" class="msg">Not signed in.</div></section><section class="card hide" id="admin"><h2>Publish latest snapshot</h2><p class="muted">Choose the latest approved email snapshot workbook. The publisher will back up the current email snapshot for download before replacing snapshot records. Existing projects and tasks will not be deleted.</p><div class="row"><input id="file" type="file" accept=".xlsx,.xls" class="field"><button id="backup" class="btn" type="button" disabled>Download current snapshot backup</button><button id="publish" class="btn" disabled>Publish to live tracker</button><button id="logout" class="btn">Sign out</button></div><div id="pubMsg" class="msg">Waiting for workbook.</div></section><section class="card"><div class="row" style="justify-content:space-between"><h2>Current live snapshot</h2><button id="refresh" class="btn">Refresh data</button></div><div id="summary" class="grid"></div><div class="cols"><div><h2>Projects & programmes</h2><div id="projects"></div></div><div><h2>Follow-up actions</h2><div id="actions"></div></div></div><p class="muted" id="stamp"></p></section></main><script>
-const auth=firebase.initializeApp(window.NPI_CONFIG.firebase).auth(),db=firebase.firestore();const $=id=>document.getElementById(id);let user=null,profile=null,wb=null,backupReady=false,snapshotAsOf="";const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-auth.onAuthStateChanged(async u=>{user=u;profile=null;if(u){try{let d=await db.collection('users').doc(u.uid).get();profile=d.exists?d.data():null}catch(e){}}const active=!!(user&&profile&&profile.active===true);$('auth').classList.toggle('hide',active);$('admin').classList.toggle('hide',!(active&&profile.role==='admin'));$('authMsg').textContent=active?'Signed in: '+(profile.name||u.email)+' · '+profile.role:(u?'Account is not an active NPI profile.':'Not signed in.');if(active)load();});
-$('login').onclick=async()=>{try{await auth.signInWithEmailAndPassword($('email').value.trim(),$('password').value)}catch(e){$('authMsg').textContent=e.message}};$('logout').onclick=()=>auth.signOut();
-function parseEmailDate(v){if(v instanceof Date&&!isNaN(v))return v;if(typeof v==='number'&&v>20000){return new Date(Date.UTC(1899,11,30)+v*86400000)}const s=String(v||'').trim();if(!s)return null;let d=new Date(s);if(!isNaN(d))return d;const m=s.match(/^(\d{1,2})[ -]([A-Za-z]{3,})[ -]?(\d{4})?$/);if(m){const y=Number(m[3]||new Date().getFullYear());d=new Date(y, new Date(m[2]+' 1, '+y).getMonth(), Number(m[1]));if(!isNaN(d))return d}return null}
-function deriveSnapshotDate(evidence){const dates=evidence.map(x=>parseEmailDate(x['Email Date'])).filter(Boolean).sort((a,b)=>a-b);if(!dates.length)throw Error('No valid Email Date found in Email Evidence. Check the workbook before publishing.');return dates[dates.length-1].toISOString().slice(0,10)}
-$('file').onchange=async e=>{try{const f=e.target.files[0];wb=f?XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true}):null;const req=['Latest Projects','Latest Actions','Email Evidence'];if(!wb||!req.every(n=>wb.SheetNames.includes(n)))throw Error('Select the prepared NPI snapshot workbook with all 3 worksheets.');const ev=XLSX.utils.sheet_to_json(wb.Sheets['Email Evidence'],{defval:''});snapshotAsOf=deriveSnapshotDate(ev);backupReady=false;$('backup').disabled=false;$('publish').disabled=true;$('pubMsg').textContent='Workbook ready: '+f.name+' · Latest email date: '+snapshotAsOf+'. Download the current snapshot backup before publishing.'}catch(e){wb=null;snapshotAsOf='';backupReady=false;$('backup').disabled=true;$('publish').disabled=true;$('pubMsg').textContent=e.message}};
-const rows=n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''});
-async function replace(name,data){const col=db.collection(name),old=await col.get();let batch=db.batch(),count=0;for(const d of old.docs){batch.delete(d.ref);if(++count===400){await batch.commit();batch=db.batch();count=0}}for(let i=0;i<data.length;i++){batch.set(col.doc(String(i+1).padStart(4,'0')),{...data[i],rowNumber:i+1});if(++count===400){await batch.commit();batch=db.batch();count=0}}if(count)await batch.commit()}
-$('backup').onclick=async()=>{try{const names=['emailSnapshotProjects','emailSnapshotActions','emailSnapshotEvidence','emailSnapshotMeta'];const backup={createdAt:new Date().toISOString(),collections:{}};for(const n of names){const s=await db.collection(n).get();backup.collections[n]=s.docs.map(d=>({id:d.id,data:d.data()}))}const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='NPI_EmailSnapshot_Backup_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();URL.revokeObjectURL(url);backupReady=true;$('publish').disabled=false;$('pubMsg').textContent='Backup download requested. Save the JSON backup safely before publishing.'}catch(e){backupReady=false;$('publish').disabled=true;$('pubMsg').textContent='Backup failed: '+e.message}};
-$('publish').onclick=async()=>{if(!profile||profile.role!=='admin'||!profile.active||!wb||!backupReady||!snapshotAsOf)return;$('publish').disabled=true;try{$('pubMsg').textContent='Publishing email snapshot to Firestore…';const p=rows('Latest Projects'),a=rows('Latest Actions'),e=rows('Email Evidence');await replace('emailSnapshotProjects',p);await replace('emailSnapshotActions',a);await replace('emailSnapshotEvidence',e);await db.collection('emailSnapshotMeta').doc('current').set({asOf:snapshotAsOf,publishedAt:firebase.firestore.FieldValue.serverTimestamp(),publishedBy:user.email,projectCount:p.length,actionCount:a.length,evidenceCount:e.length});$('pubMsg').textContent='Published snapshot dated '+snapshotAsOf+'. Existing projects and tasks were not changed. '+p.length+' projects, '+a.length+' actions and '+e.length+' evidence records loaded.';await load()}catch(e){$('pubMsg').textContent='Publish failed: '+e.message}finally{$('publish').disabled=false}};
-async function load(){try{const [p,a,m]=await Promise.all([db.collection('emailSnapshotProjects').get(),db.collection('emailSnapshotActions').get(),db.collection('emailSnapshotMeta').doc('current').get()]);const ps=p.docs.map(d=>d.data()).sort((x,y)=>String(x.Customer).localeCompare(String(y.Customer))||String(x['Project / Programme']).localeCompare(String(y['Project / Programme']))),as=a.docs.map(d=>d.data());$('summary').innerHTML='<div class="kpi"><b>'+ps.length+'</b>Projects / programmes</div><div class="kpi"><b>'+as.length+'</b>Follow-up actions</div><div class="kpi"><b>'+new Set(ps.map(x=>x.Customer)).size+'</b>Customers</div><div class="kpi"><b>'+(m.exists?m.data().asOf:'—')+'</b>Snapshot date</div>';$('projects').innerHTML=ps.map(x=>'<div class="item"><h3>'+esc(x['Project / Programme'])+'</h3><span class="tag">'+esc(x.Customer)+' · '+esc(x['Latest Status'])+'</span><p>'+esc(x['Latest Evidence / Update'])+'</p><p class="muted"><b>Next:</b> '+esc(x['Next Action'])+'</p></div>').join('')||'<p class="muted">No snapshot published yet.</p>';$('actions').innerHTML=as.map(x=>'<div class="item"><h3>'+esc(x.Action)+'</h3><span class="tag">'+esc(x.Project)+' · '+esc(x['Latest State'])+'</span><p class="muted">'+esc(x['Mentioned Owner / Team'])+' · '+esc(x['Due / Target'])+'</p></div>').join('')||'<p class="muted">No actions published.</p>';const d=m.exists?m.data():null;$('stamp').textContent=d?'Published by '+d.publishedBy+' · '+(d.publishedAt?.toDate?d.publishedAt.toDate().toLocaleString():''):'No live snapshot published yet.'}catch(e){$('projects').textContent='Sign in to view the live snapshot. '+e.message}}
-$('refresh').onclick=load;
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Latest Email Snapshot · Exzone NPI</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0878F9">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>:root{--n:#09265D;--b:#0878F9;--bg:#F2F7FD;--l:#D5E2F2;--m:#64748B;--bad:#B42318;--bad-bg:#FDECEA;--warn:#8A5A00;--warn-bg:#FFF4D6;--ok:#1D7A46;--ok-bg:#E5F5EC}*{box-sizing:border-box}body{margin:0;background:var(--bg);font:14px 'IBM Plex Sans',sans-serif;color:#18243A}.top{background:#fff;border-bottom:3px solid var(--n);padding:14px 18px;display:flex;justify-content:space-between}.top a{color:var(--n);text-decoration:none;font-weight:600}.top b,h1,h2,h3{font-family:'IBM Plex Sans Condensed';color:var(--n)}.wrap{max-width:1180px;margin:auto;padding:22px 16px 60px}h1{font-size:30px;margin:0}h2{font-size:20px;margin:0}.sub,.muted{color:var(--m)}.card{background:white;border:1px solid var(--l);border-radius:9px;padding:16px;margin:14px 0}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.field{padding:10px;border:1px solid var(--l);border-radius:6px;font:inherit;min-width:210px}.btn{background:var(--n);color:white;border:0;border-radius:6px;padding:10px 16px;font-weight:600;cursor:pointer}.btn.ghost{background:#fff;color:var(--n);border:1px solid var(--l)}.btn:disabled{opacity:.5;cursor:not-allowed}.msg{background:#EAF3FF;padding:10px;border-radius:6px;margin-top:10px;white-space:pre-line}.msg.bad{background:var(--bad-bg);color:var(--bad)}.msg.ok{background:var(--ok-bg);color:var(--ok)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0}.kpi{background:#F5F9FF;border:1px solid var(--l);border-radius:7px;padding:12px}.kpi b{display:block;font:700 26px 'IBM Plex Sans Condensed';color:var(--n)}.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}.item{border-top:1px solid #e7eff8;padding:12px 0}.item h3{margin:0 0 5px;font-size:16px}.tag{font-size:11px;background:#EAF3FF;padding:3px 7px;border-radius:20px;font-weight:600}.hide{display:none!important}.steps{margin:10px 0 0;padding-left:20px}.steps li{margin:3px 0}.issues{margin:8px 0;padding-left:20px}.issues.bad li{color:var(--bad)}.issues.warn li{color:var(--warn)}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px 8px;border-top:1px solid #e7eff8;vertical-align:top}th{color:var(--m);font-weight:600}.st{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px;background:#eef2f7}.st.published{background:var(--ok-bg);color:var(--ok)}.st.failed{background:var(--bad-bg);color:var(--bad)}.st.staging{background:var(--warn-bg);color:var(--warn)}label.chk{display:flex;gap:8px;align-items:center;margin-top:10px}@media(max-width:760px){.cols{grid-template-columns:1fr}}</style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<!-- SheetJS from its official CDN (the npm 0.18.5 build has known prototype-pollution and ReDoS issues). -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="lib/snapshot.js"></script>
+</head>
+<body>
+<header class="top"><a href="index.html">← NPI Tracker</a><b>EXZONE · LATEST EMAIL SNAPSHOT</b></header>
+<main class="wrap">
+  <h1>Latest Email Snapshot</h1>
+  <p class="sub">Publish the prepared email snapshot workbook to the NPI Tracker. Each publish is stored as its own version; the tracker switches to it in one step, and any earlier version can be made live again.</p>
+
+  <section class="card" id="auth">
+    <h2>Team sign-in</h2>
+    <p class="muted">Use your Firebase NPI Tracker account. Publishing is restricted to an active admin.</p>
+    <div class="row"><input id="email" class="field" type="email" placeholder="Company email" autocomplete="username"><input id="password" class="field" type="password" placeholder="Password" autocomplete="current-password"><button id="login" class="btn">Sign in</button></div>
+    <div id="authMsg" class="msg">Not signed in.</div>
+  </section>
+
+  <section class="card hide" id="admin">
+    <h2>1 · Check the workbook</h2>
+    <p class="muted">Choose the approved snapshot workbook (sheets: Latest Projects, Latest Actions, Email Evidence). Nothing is written until you press Publish.</p>
+    <div class="row"><input id="file" type="file" accept=".xlsx,.xls" class="field"><button id="logout" class="btn ghost" type="button">Sign out</button></div>
+    <div id="report" class="msg">Waiting for workbook.</div>
+
+    <h2 style="margin-top:18px">2 · Back up the live snapshot</h2>
+    <div class="row" style="margin-top:8px"><button id="backup" class="btn" type="button" disabled>Download backup (JSON)</button></div>
+
+    <h2 style="margin-top:18px">3 · Publish</h2>
+    <label class="chk"><input type="checkbox" id="mirror" checked> Also update the old flat collections, so phones still on app v2.11 or earlier see the new snapshot</label>
+    <div class="row" style="margin-top:10px"><button id="publish" class="btn" type="button" disabled>Publish as new version</button></div>
+    <ol class="steps" id="steps"></ol>
+    <div id="pubMsg" class="msg">Check the workbook and download the backup first.</div>
+  </section>
+
+  <section class="card hide" id="versionsCard">
+    <div class="row" style="justify-content:space-between"><h2>Snapshot versions</h2><button id="reloadVersions" class="btn ghost" type="button">Reload</button></div>
+    <p class="muted">The live version is what the tracker shows. “Make live” switches back to an earlier version in one step; nothing is deleted.</p>
+    <div id="versions"><p class="muted">No versions yet. The first publish from this page creates version 1; the current snapshot stays live until then.</p></div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between"><h2>Current live snapshot</h2><button id="refresh" class="btn ghost" type="button">Reload</button></div>
+    <div id="summary" class="grid"></div>
+    <div class="cols"><div><h2>Projects &amp; programmes</h2><div id="projects"></div></div><div><h2>Follow-up actions</h2><div id="actions"></div></div></div>
+    <p class="muted" id="stamp"></p>
+  </section>
+</main>
+<script>
+"use strict";
+const S = window.NPISnapshot;
+if (!firebase.apps.length) firebase.initializeApp(window.NPI_CONFIG.firebase);
+const auth = firebase.auth(), db = firebase.firestore(), FV = firebase.firestore.FieldValue;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TEAM = ["rashid","fadzmi","liyana","yusri","zul","fakrul","wajdi","shamsuri"];
+const BATCH = 400;
+let user = null, profile = null, myKey = "", parsed = null, report = null, fileName = "", backupReady = false, liveMeta = null, busy = false;
+
+// Only users/{uid}.teamKey counts — the Firestore rules check exactly this field for the audit entry.
+function teamKeyOf(p){ const k = String(p.teamKey || "").toLowerCase(); return TEAM.includes(k) ? k : ""; }
+const isAdmin = () => !!(user && profile && profile.active === true && profile.role === "admin");
+const liveVersion = m => m ? (m.version || "legacy") : "none";
+function msg(el, text, kind){ const x = $(el); x.textContent = text; x.className = "msg" + (kind ? " " + kind : ""); }
+function step(text, state){ const li = document.createElement("li"); li.textContent = (state === "bad" ? "✗ " : state === "ok" ? "✓ " : "… ") + text; $("steps").appendChild(li); return li; }
+function friendly(e){
+  if (e && e.code === "permission-denied") return "Permission denied by Firestore rules. If this is the first versioned publish, deploy the updated firestore.rules (see docs/DEPLOYMENT.md) and make sure your users/{uid} document has role \"admin\" and teamKey set.";
+  return (e && e.message) || String(e);
+}
+function setButtons(){
+  $("backup").disabled = busy || !(report && report.ok);
+  $("publish").disabled = busy || !(report && report.ok && backupReady && isAdmin());
+}
+
+/* ---------- sign-in ---------- */
+auth.onAuthStateChanged(async u => {
+  user = u; profile = null; myKey = "";
+  if (u) { try { const d = await db.collection("users").doc(u.uid).get(); profile = d.exists ? d.data() : null; } catch (e) { profile = null; } }
+  const active = !!(user && profile && profile.active === true);
+  if (active) myKey = teamKeyOf(profile);
+  $("auth").classList.toggle("hide", active);
+  $("admin").classList.toggle("hide", !isAdmin());
+  $("versionsCard").classList.toggle("hide", !isAdmin());
+  msg("authMsg", active ? "Signed in: " + (profile.name || u.email) + " · " + profile.role : (u ? "This account is not an active NPI Tracker profile." : "Not signed in."));
+  if (active) { await load(); if (isAdmin()) await loadVersions(); }
+  setButtons();
+});
+$("login").onclick = async () => { try { await auth.signInWithEmailAndPassword($("email").value.trim(), $("password").value); } catch (e) { msg("authMsg", e.code === "auth/invalid-credential" ? "Email or password is incorrect." : friendly(e), "bad"); } };
+$("logout").onclick = () => auth.signOut();
+
+/* ---------- 1. read and validate the workbook ---------- */
+$("file").onchange = async e => {
+  parsed = null; report = null; backupReady = false; fileName = ""; $("steps").innerHTML = "";
+  try {
+    const f = e.target.files[0]; if (!f) { msg("report", "Waiting for workbook."); setButtons(); return; }
+    const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true });
+    const missing = Object.values(S.SHEETS).map(x => x.sheet).filter(n => !wb.SheetNames.includes(n));
+    if (missing.length) throw new Error("Missing worksheet(s): " + missing.join(", ") + ". Select the prepared NPI snapshot workbook.");
+    const rows = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: "" });
+    parsed = { projects: rows(S.SHEETS.projects.sheet), actions: rows(S.SHEETS.actions.sheet), evidence: rows(S.SHEETS.evidence.sheet) };
+    report = S.validate(parsed); fileName = f.name;
+    const c = report.counts;
+    let html = "<b>" + esc(f.name) + "</b> · " + c.projects + " projects · " + c.actions + " actions · " + c.evidence + " evidence rows · latest email " + esc(report.asOf || "unknown");
+    if (report.errors.length) html += '<ul class="issues bad">' + report.errors.slice(0, 30).map(x => "<li>" + esc(x) + "</li>").join("") + (report.errors.length > 30 ? "<li>… and " + (report.errors.length - 30) + " more</li>" : "") + "</ul>";
+    if (report.warnings.length) html += '<ul class="issues warn">' + report.warnings.map(x => "<li>" + esc(x) + "</li>").join("") + "</ul>";
+    html += report.ok ? "<div>No blocking problems. Download the backup next.</div>" : "<div><b>Fix the errors above in the workbook, then choose it again.</b> Nothing has been written.</div>";
+    const r = $("report"); r.innerHTML = html; r.className = "msg" + (report.ok ? "" : " bad");
+  } catch (err) { parsed = null; report = null; msg("report", friendly(err), "bad"); }
+  setButtons();
+};
+
+/* ---------- 2. backup ---------- */
+async function readVersion(version){
+  const base = db.collection("emailSnapshots").doc(version), out = {};
+  for (const kind of ["projects", "actions", "evidence"]) { const s = await base.collection(kind).get(); out[kind] = s.docs.map(d => ({ id: d.id, data: d.data() })); }
+  return out;
+}
+$("backup").onclick = async () => {
+  try {
+    const names = ["emailSnapshotProjects", "emailSnapshotActions", "emailSnapshotEvidence", "emailSnapshotMeta"];
+    const backup = { createdAt: new Date().toISOString(), createdBy: user.email, liveVersion: liveVersion(liveMeta), collections: {} };
+    for (const n of names) { const s = await db.collection(n).get(); backup.collections[n] = s.docs.map(d => ({ id: d.id, data: d.data() })); }
+    if (liveMeta && liveMeta.version) backup.version = { id: liveMeta.version, records: await readVersion(liveMeta.version) };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = "NPI_EmailSnapshot_Backup_" + new Date().toISOString().replace(/[:.]/g, "-") + ".json"; a.click(); URL.revokeObjectURL(url);
+    backupReady = true; msg("pubMsg", "Backup downloaded. Keep the JSON file safe, then press Publish.");
+  } catch (e) { backupReady = false; msg("pubMsg", "Backup failed: " + friendly(e), "bad"); }
+  setButtons();
+};
+
+/* ---------- 3. publish: stage → verify → switch pointer atomically → audit → optional legacy mirror ---------- */
+async function writeRecords(base, docs){
+  for (const kind of ["projects", "actions", "evidence"]) {
+    const list = docs[kind];
+    for (let i = 0; i < list.length; i += BATCH) {
+      const b = db.batch();
+      list.slice(i, i + BATCH).forEach(d => b.set(base.collection(kind).doc(d.id), d.data));
+      await b.commit();
+    }
+  }
+}
+async function verifyRecords(base, docs){
+  for (const kind of ["projects", "actions", "evidence"]) {
+    const s = await base.collection(kind).get();
+    if (s.size !== docs[kind].length) throw new Error("Verification failed for " + kind + ": wrote " + docs[kind].length + ", read back " + s.size + ".");
+  }
+}
+/** Points emailSnapshotMeta/current at `version` in one transaction, only if the live version is still `expected`. */
+async function switchLive(version, expected, info, action){
+  const metaRef = db.collection("emailSnapshotMeta").doc("current"), vRef = db.collection("emailSnapshots").doc(version);
+  await db.runTransaction(async tx => {
+    const cur = await tx.get(metaRef), curData = cur.exists ? cur.data() : null, curV = liveVersion(curData);
+    if (curV !== expected) throw new Error("The live snapshot changed while you were working (it is now " + curV + "). Reload this page and check before trying again.");
+    tx.set(metaRef, { version, asOf: info.asOf, publishedAt: FV.serverTimestamp(), publishedBy: user.email,
+      projectCount: info.counts.projects, actionCount: info.counts.actions, evidenceCount: info.counts.evidence, previousVersion: curData && curData.version || null });
+    tx.update(vRef, { status: "published", publishedAt: FV.serverTimestamp(), publishedBy: user.email });
+    if (curData && curData.version && curData.version !== version) tx.update(db.collection("emailSnapshots").doc(curData.version), { status: "superseded" });
+    tx.set(db.collection("auditLogs").doc(), { actorUid: user.uid, actor: myKey, action, entityId: version,
+      details: { asOf: info.asOf, counts: info.counts, previous: curV }, at: FV.serverTimestamp() });
+  });
+}
+/** Old app versions (≤ v2.11) read the flat collections. Same layout as before: row-number IDs, plus stableId on every record. */
+async function mirrorLegacy(docs){
+  const map = { projects: "emailSnapshotProjects", actions: "emailSnapshotActions", evidence: "emailSnapshotEvidence" };
+  for (const kind of Object.keys(map)) {
+    const col = db.collection(map[kind]), old = await col.get(), ops = [];
+    old.docs.forEach(d => ops.push(b => b.delete(d.ref)));
+    docs[kind].forEach((d, i) => ops.push(b => b.set(col.doc(String(i + 1).padStart(4, "0")), d.data)));
+    for (let i = 0; i < ops.length; i += BATCH) { const b = db.batch(); ops.slice(i, i + BATCH).forEach(fn => fn(b)); await b.commit(); }
+  }
+}
+$("publish").onclick = async () => {
+  if (!isAdmin() || !report || !report.ok || !backupReady || busy) return;
+  if (!myKey) { msg("pubMsg", "Your profile has no teamKey, so the audit entry cannot be written. Add teamKey to your users document first (docs/DEPLOYMENT.md step 1).", "bad"); return; }
+  if (!confirm("Publish " + fileName + " (latest email " + report.asOf + ") as the live snapshot?")) return;
+  busy = true; setButtons(); $("steps").innerHTML = ""; msg("pubMsg", "Publishing…");
+  const expected = liveVersion(liveMeta);
+  const version = report.asOf + "_" + new Date().toISOString().replace(/\D/g, "").slice(0, 14) + "_" + Math.random().toString(36).slice(2, 6);
+  const base = db.collection("emailSnapshots").doc(version);
+  let docs;
+  let staged = false, live = false;
+  try {
+    let li = step("Linking ticks saved by older app versions");
+    docs = S.buildDocs(parsed, await currentLegacyMap()); li.textContent = "✓ Older ticks linked by content";
+    li = step("Creating version " + version);
+    await base.set({ status: "staging", asOf: report.asOf, createdAt: FV.serverTimestamp(), createdBy: user.email, createdByUid: user.uid,
+      sourceFile: fileName.slice(0, 200), counts: report.counts, warnings: report.warnings.slice(0, 20), engine: "publisher-2.12" });
+    staged = true; li.textContent = "✓ Version " + version + " created";
+    li = step("Writing " + (report.counts.projects + report.counts.actions + report.counts.evidence) + " records"); await writeRecords(base, docs); li.textContent = "✓ Records written";
+    li = step("Reading back to verify"); await verifyRecords(base, docs); li.textContent = "✓ All records verified";
+    li = step("Switching the tracker to this version"); await switchLive(version, expected, report, "snapshot_published"); live = true; li.textContent = "✓ Live — the tracker now shows this version (audit entry written)";
+    if ($("mirror").checked) {
+      li = step("Updating the old flat collections");
+      try { await mirrorLegacy(docs); li.textContent = "✓ Old flat collections updated"; }
+      catch (e) { li.textContent = "✗ Old flat collections not updated: " + friendly(e) + " — the live version is fine; only app v2.11 and earlier may show the previous snapshot."; }
+    }
+    msg("pubMsg", "Published version " + version + " (latest email " + report.asOf + "): " + report.counts.projects + " projects, " + report.counts.actions + " actions, " + report.counts.evidence + " evidence records. Projects and tasks collections were not touched.", "ok");
+    backupReady = false;
+  } catch (e) {
+    step(friendly(e), "bad");
+    if (staged && !live) { try { await base.update({ status: "failed", error: String(e.message || e).slice(0, 300) }); } catch (_) {} }
+    msg("pubMsg", (live ? "Published, but a later step failed: " : "Publish stopped. The live snapshot was NOT changed. ") + friendly(e), "bad");
+  } finally { busy = false; await load(); await loadVersions(); setButtons(); }
+};
+
+/** Old ticks/updates use index IDs (email-action-001…). Match them by content to the new records so they stay on the right item. */
+async function currentLegacyMap(){
+  if (liveMeta && liveMeta.version) return S.legacyIdMap(null, await readVersion(liveMeta.version));
+  const [p, a] = await Promise.all([db.collection("emailSnapshotProjects").get(), db.collection("emailSnapshotActions").get()]);
+  const rows = s => s.docs.slice().sort((x, y) => x.id.localeCompare(y.id)).map(d => d.data());
+  return S.legacyIdMap({ projects: rows(p), actions: rows(a) }, null);
+}
+
+/* ---------- versions and rollback ---------- */
+async function loadVersions(){
+  try {
+    const s = await db.collection("emailSnapshots").orderBy("createdAt", "desc").limit(15).get();
+    if (!s.size) { $("versions").innerHTML = '<p class="muted">No versions yet. The first publish from this page creates one; the current snapshot stays live until then.</p>'; return; }
+    const cur = liveMeta && liveMeta.version;
+    $("versions").innerHTML = "<table><thead><tr><th>Version</th><th>Latest email</th><th>Records</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>" + s.docs.map(d => {
+      const v = d.data(), c = v.counts || {}, isLive = d.id === cur, can = !isLive && (v.status === "published" || v.status === "superseded");
+      return "<tr><td>" + esc(d.id) + "</td><td>" + esc(v.asOf || "—") + "</td><td>" + (c.projects || 0) + " / " + (c.actions || 0) + " / " + (c.evidence || 0) + "</td><td><span class='st " + esc(v.status) + "'>" + (isLive ? "LIVE" : esc(v.status || "?")) + "</span>" + (v.error ? "<div class='muted'>" + esc(v.error) + "</div>" : "") + "</td><td>" + esc(v.createdBy || "") + "</td><td>" + (can ? "<button class='btn ghost' data-live='" + esc(d.id) + "'>Make live</button>" : "") + "</td></tr>";
+    }).join("") + "</tbody></table><p class='muted'>Records = projects / actions / evidence.</p>";
+  } catch (e) { $("versions").innerHTML = '<p class="muted">Versions unavailable: ' + esc(friendly(e)) + "</p>"; }
+}
+$("reloadVersions").onclick = async () => { await load(); await loadVersions(); };
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-live]"); if (!b || busy || !isAdmin()) return;
+  const v = b.dataset.live;
+  if (!confirm("Make version " + v + " live again? The tracker will switch to it immediately.")) return;
+  busy = true; b.disabled = true;
+  try {
+    const vd = (await db.collection("emailSnapshots").doc(v).get()).data();
+    const rec = await readVersion(v), counts = { projects: rec.projects.length, actions: rec.actions.length, evidence: rec.evidence.length };
+    if (vd.counts && (vd.counts.projects !== counts.projects || vd.counts.actions !== counts.actions || vd.counts.evidence !== counts.evidence)) throw new Error("This version's records do not match its saved counts, so it was not made live.");
+    if (!counts.projects) throw new Error("This version has no project records, so it was not made live.");
+    await switchLive(v, liveVersion(liveMeta), { asOf: vd.asOf, counts }, "snapshot_rolled_back");
+    if ($("mirror").checked) { try { await mirrorLegacy({ projects: rec.projects.sort(byRow), actions: rec.actions.sort(byRow), evidence: rec.evidence.sort(byRow) }); } catch (_) {} }
+    alert("Version " + v + " is live.");
+  } catch (err) { alert("Could not switch: " + friendly(err)); }
+  finally { busy = false; await load(); await loadVersions(); }
+});
+const byRow = (a, b) => (Number(a.data.rowNumber) || 0) - (Number(b.data.rowNumber) || 0);
+
+/* ---------- current live snapshot (read-only) ---------- */
+async function load(){
+  try {
+    const m = await db.collection("emailSnapshotMeta").doc("current").get();
+    liveMeta = m.exists ? m.data() : null;
+    let ps, as;
+    if (liveMeta && liveMeta.version) { const r = await readVersion(liveMeta.version); ps = r.projects.map(x => x.data); as = r.actions.map(x => x.data); }
+    else { const [p, a] = await Promise.all([db.collection("emailSnapshotProjects").get(), db.collection("emailSnapshotActions").get()]); ps = p.docs.map(d => d.data()); as = a.docs.map(d => d.data()); }
+    ps.sort((x, y) => S.text(x.Customer).localeCompare(S.text(y.Customer)) || S.text(x["Project / Programme"]).localeCompare(S.text(y["Project / Programme"])));
+    as.sort((x, y) => (Number(x.rowNumber) || 0) - (Number(y.rowNumber) || 0));
+    $("summary").innerHTML = '<div class="kpi"><b>' + ps.length + '</b>Projects / programmes</div><div class="kpi"><b>' + as.length + '</b>Follow-up actions</div><div class="kpi"><b>' + new Set(ps.map(x => S.text(x.Customer))).size + '</b>Customers</div><div class="kpi"><b>' + esc(liveMeta ? liveMeta.asOf : "—") + '</b>Snapshot date</div>';
+    $("projects").innerHTML = ps.map(x => '<div class="item"><h3>' + esc(S.text(x["Project / Programme"])) + '</h3><span class="tag">' + esc(S.text(x.Customer)) + " · " + esc(S.text(x["Latest Status"])) + "</span><p>" + esc(S.text(x["Latest Evidence / Update"])) + '</p><p class="muted"><b>Next:</b> ' + esc(S.text(x["Next Action"])) + "</p></div>").join("") || '<p class="muted">No snapshot published yet.</p>';
+    $("actions").innerHTML = as.map(x => '<div class="item"><h3>' + esc(S.text(x.Action)) + '</h3><span class="tag">' + esc(S.text(x.Project)) + " · " + esc(S.text(x["Latest State"])) + '</span><p class="muted">' + esc(S.text(x["Mentioned Owner / Team"])) + " · " + esc(S.text(x["Due / Target"])) + "</p></div>").join("") || '<p class="muted">No actions published.</p>';
+    const when = liveMeta && liveMeta.publishedAt && liveMeta.publishedAt.toDate ? liveMeta.publishedAt.toDate().toLocaleString() : "";
+    $("stamp").textContent = liveMeta ? "Published by " + (liveMeta.publishedBy || "?") + (when ? " · " + when : "") + " · version " + liveVersion(liveMeta) : "No live snapshot published yet.";
+  } catch (e) { $("projects").textContent = "Sign in to view the live snapshot. " + friendly(e); }
+}
+$("refresh").onclick = load;
+</script>
+</body>
+</html>
